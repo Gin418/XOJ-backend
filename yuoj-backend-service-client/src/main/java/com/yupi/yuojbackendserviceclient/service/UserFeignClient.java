@@ -41,6 +41,14 @@ public interface UserFeignClient {
     List<User> listByIds(@RequestParam("idList") Collection<Long> idList);
 
     /**
+     * 根据昵称模糊查询用户列表
+     * @param userName
+     * @return
+     */
+    @GetMapping("/get/userName")
+    List<User> listByUserName(@RequestParam("userName") String userName);
+
+    /**
      * 根据 token 获取登录用户
      * @param token
      * @return

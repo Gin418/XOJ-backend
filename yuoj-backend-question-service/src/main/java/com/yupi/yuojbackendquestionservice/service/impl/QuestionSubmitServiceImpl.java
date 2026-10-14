@@ -25,6 +25,7 @@ import com.yupi.yuojbackendquestionservice.mapper.QuestionSubmitMapper;
 import com.yupi.yuojbackendquestionservice.rabbitmq.MyMessageProducer;
 import com.yupi.yuojbackendquestionservice.service.QuestionService;
 import com.yupi.yuojbackendquestionservice.service.QuestionSubmitService;
+import com.yupi.yuojbackendserviceclient.service.CompetitionFeignClient;
 import com.yupi.yuojbackendserviceclient.service.JudgeFeignClient;
 import com.yupi.yuojbackendserviceclient.service.UserFeignClient;
 import org.apache.commons.collections4.CollectionUtils;
@@ -66,6 +67,9 @@ public class QuestionSubmitServiceImpl extends ServiceImpl<QuestionSubmitMapper,
     private JudgeFeignClient judgeFeignClient;
 
     @Resource
+    private CompetitionFeignClient competitionFeignClient;
+
+    @Resource
     private MyMessageProducer myMessageProducer;
 
     /**
@@ -99,6 +103,8 @@ public class QuestionSubmitServiceImpl extends ServiceImpl<QuestionSubmitMapper,
         questionSubmit.setQuestionId(questionId);
         questionSubmit.setCode(questionSubmitAddRequest.getCode());
         questionSubmit.setLanguage(languageEnum.getLanguageTitle());
+        // 竞赛提交：记录所属竞赛（题库提交为空）
+        questionSubmit.setCompetitionId(questionSubmitAddRequest.getCompetitionId());
         // 设置初始状态（判题状态由 status 字段承载）
         questionSubmit.setStatus(JudgeInfoMessageEnum.WAITING_JUDGE.getValue());
         boolean save = this.save(questionSubmit);
@@ -107,6 +113,11 @@ public class QuestionSubmitServiceImpl extends ServiceImpl<QuestionSubmitMapper,
         }
         // 题目提交数 +1
         questionService.updateQuestionSubmitNum(questionId);
+        // 竞赛提交：竞赛题目提交数 +1
+        Long competitionId = questionSubmitAddRequest.getCompetitionId();
+        if (competitionId != null) {
+            competitionFeignClient.updateCompetitionQuestionSubmitNum(competitionId, questionId);
+        }
         Long questionSubmitId = questionSubmit.getId();
         // 发送消息
         myMessageProducer.sendMessage("code_exchange", "my_routingKey", String.valueOf(questionSubmitId));

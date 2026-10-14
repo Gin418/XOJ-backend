@@ -3,13 +3,17 @@ package com.yupi.yuojbackendserviceclient.service;
 
 import com.yupi.yuojbackendcommon.common.BaseResponse;
 import com.yupi.yuojbackendcommon.common.ResultUtils;
+import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionSubmitInnerQueryRequest;
 import com.yupi.yuojbackendmodel.model.entity.Question;
 import com.yupi.yuojbackendmodel.model.entity.QuestionSubmit;
+import com.yupi.yuojbackendmodel.model.vo.InnerQuestionSubmitPageVO;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
+
+import java.util.List;
 
 /**
 * @author 李鱼皮
@@ -36,5 +40,17 @@ public interface QuestionFeignClient {
 
     @GetMapping("/downloadInOutFile")
     String downloadInOutFile(@RequestParam("rawUrl") String rawUrl, @RequestParam("questionId") Long questionId);
+
+    /**
+     * 分页查询竞赛提交记录
+     */
+    @PostMapping("/question_submit/competition/page")
+    InnerQuestionSubmitPageVO listCompetitionSubmits(@RequestBody CompetitionSubmitInnerQueryRequest request);
+
+    /**
+     * 查询竞赛的全部提交记录（按提交时间升序）
+     */
+    @GetMapping("/question_submit/competition/list")
+    List<QuestionSubmit> listCompetitionSubmitsAll(@RequestParam("competitionId") long competitionId);
 
 }

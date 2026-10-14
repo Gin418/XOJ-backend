@@ -45,6 +45,20 @@ public class UserInnerController implements UserFeignClient {
     }
 
     /**
+     * 根据昵称模糊查询用户列表
+     * @param userName
+     * @return
+     */
+    @Override
+    @GetMapping("/get/userName")
+    public List<User> listByUserName(@RequestParam("userName") String userName) {
+        return userService.lambdaQuery()
+                .like(User::getUserName, userName)
+                .select(User::getId, User::getUserName, User::getUserAvatar, User::getUserProfile)
+                .list();
+    }
+
+    /**
      * 根据 token 获取登录用户
      * @param token
      * @return

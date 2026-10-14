@@ -58,14 +58,16 @@ create table if not exists question_submit
     judgeInfo  text                               null comment '判题信息（json 对象）',
     codeSize   int      default 0                 not null comment '代码大小',
     questionId bigint                             not null comment '题目 id',
+    competitionId bigint                          null comment '竞赛 id（null 表示题库提交）',
     status     varchar(52) default ''             not null comment '判题状态',
     userId     bigint                             not null comment '创建用户 id',
     createTime datetime default CURRENT_TIMESTAMP not null comment '创建时间',
     updateTime datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
     isDelete   tinyint  default 0                 not null comment '是否删除',
     index idx_questionId (questionId),
+    index idx_competitionId (competitionId),
     index idx_userId (userId)
-) comment '题目提交';
+) comment '题目提交（题库/竞赛共用）';
 
 -- 帖子表
 create table if not exists post
@@ -106,3 +108,51 @@ create table if not exists post_favour
     index idx_postId (postId),
     index idx_userId (userId)
 ) comment '帖子收藏';
+
+-- 竞赛表
+create table if not exists competition
+(
+    id               bigint auto_increment comment 'id' primary key,
+    competitionTitle varchar(256)                       null comment '竞赛标题',
+    description      text                               null comment '描述',
+    startTime        varchar(52)                        null comment '开始时间',
+    endTime          varchar(52)                        null comment '结束时间',
+    questionIds      varchar(1024)                      null comment '题目 id 列表（英文逗号分隔）',
+    status           varchar(52)  default ''            not null comment '状态',
+    userId           bigint                             null comment '创建用户 id',
+    createTime       datetime default CURRENT_TIMESTAMP not null comment '创建时间',
+    updateTime       datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
+    isDelete         tinyint  default 0                 not null comment '是否删除'
+) comment '竞赛' collate = utf8mb4_unicode_ci;
+
+-- 用户竞赛关系表（用户参加了哪些竞赛，硬删除）
+create table if not exists user_competition
+(
+    id            bigint auto_increment comment 'id' primary key,
+    competitionId bigint                             not null comment '竞赛 id',
+    userId        bigint                             not null comment '用户 id',
+    penaltyTime   bigint   default 0                 not null comment '罚时',
+    createTime    datetime default CURRENT_TIMESTAMP not null comment '创建时间',
+    updateTime    datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
+    index idx_competitionId (competitionId),
+    index idx_userId (userId),
+    unique key uk_user_competition (userId, competitionId)
+) comment '用户竞赛关系' collate = utf8mb4_unicode_ci;
+
+-- 竞赛题目关系表（竞赛包含哪些题目，硬删除）
+create table if not exists competition_question
+(
+    id            bigint auto_increment comment 'id' primary key,
+    competitionId bigint                             not null comment '竞赛 id',
+    questionId    bigint                             not null comment '题目 id',
+    questionOrder  int      default 1                 not null comment '题目顺序（题号 A、B、C……）',
+    submitNum           int      default 0           not null comment '提交数',
+    acceptedNum         int      default 0           not null comment '通过数',
+    firstAcceptedUserId bigint                       null comment '第一个通过的用户 id',
+    firstAcceptedTime   datetime                     null comment '首个通过用户的提交时间',
+    createTime    datetime default CURRENT_TIMESTAMP not null comment '创建时间',
+    updateTime    datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
+    index idx_competitionId (competitionId),
+    index idx_questionId (questionId),
+    unique key uk_competition_question (competitionId, questionId)
+) comment '竞赛题目关系' collate = utf8mb4_unicode_ci;

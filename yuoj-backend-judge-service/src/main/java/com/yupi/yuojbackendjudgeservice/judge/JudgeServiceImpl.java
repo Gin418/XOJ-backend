@@ -1,5 +1,6 @@
 package com.yupi.yuojbackendjudgeservice.judge;
 
+import cn.hutool.core.date.DateUtil;
 import cn.hutool.json.JSONUtil;
 import com.yupi.yuojbackendcommon.common.ErrorCode;
 import com.yupi.yuojbackendcommon.exception.BusinessException;
@@ -15,6 +16,7 @@ import com.yupi.yuojbackendmodel.model.dto.question.JudgeConfig;
 import com.yupi.yuojbackendmodel.model.entity.Question;
 import com.yupi.yuojbackendmodel.model.entity.QuestionSubmit;
 import com.yupi.yuojbackendmodel.model.enums.JudgeInfoMessageEnum;
+import com.yupi.yuojbackendserviceclient.service.CompetitionFeignClient;
 import com.yupi.yuojbackendserviceclient.service.QuestionFeignClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -35,6 +37,9 @@ public class JudgeServiceImpl implements JudgeService {
 
     @Resource
     private QuestionFeignClient questionFeignClient;
+
+    @Resource
+    private CompetitionFeignClient competitionFeignClient;
 
     @Resource
     private JudgeManager judgeManager;
@@ -111,6 +116,16 @@ public class JudgeServiceImpl implements JudgeService {
         // 判题通过时，题目通过数 +1
         if (JudgeInfoMessageEnum.ACCEPTED.getValue().equals(judgeContext.getStatus())) {
             questionFeignClient.updateQuestionAcceptNum(questionId);
+            // 竞赛提交：竞赛题目通过数 +1，按提交时间记录第一个通过的用户（首杀）
+            Long competitionId = questionSubmit.getCompetitionId();
+            if (competitionId != null) {
+                // 首杀判定时间取提交时间（提交最早且通过者为首杀）
+                String submitTime = questionSubmit.getCreateTime() != null
+                        ? DateUtil.format(questionSubmit.getCreateTime(), "yyyy-MM-dd HH:mm:ss")
+                        : DateUtil.now();
+                competitionFeignClient.updateCompetitionQuestionAcceptNum(competitionId, questionId,
+                        questionSubmit.getUserId(), submitTime);
+            }
         }
         QuestionSubmit questionSubmitResult = questionFeignClient.getQuestionSubmitById(questionSubmitId);
         return questionSubmitResult;

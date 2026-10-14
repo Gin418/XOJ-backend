@@ -40,6 +40,11 @@ public class QuestionSubmit implements Serializable {
     private Long questionId;
 
     /**
+     * 竞赛 id（null 表示题库提交）
+     */
+    private Long competitionId;
+
+    /**
      * 判题状态（判题结果由该字段承载，取值 JudgeInfoMessageEnum）
      */
     private String status;

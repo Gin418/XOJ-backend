@@ -44,6 +44,7 @@ public class GlobalAuthFilter implements GlobalFilter, Ordered {
             // 题目服务：公开查询接口
             "/api/question/get/vo",
             "/api/question/list/page/vo",
+            "/api/question/simple/list",
             "/api/question/question_submit/list/page",
             "/api/question/count/**",
             "/api/question/stats/**",

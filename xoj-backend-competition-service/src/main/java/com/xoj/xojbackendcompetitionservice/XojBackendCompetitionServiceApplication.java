@@ -13,7 +13,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @MapperScan("com.xoj.xojbackendcompetitionservice.mapper")
 @EnableScheduling
 @EnableAspectJAutoProxy(proxyTargetClass = true, exposeProxy = true)
-@ComponentScan("com.yupi")
+@ComponentScan(basePackages = {"com.yupi", "com.xoj"})
 @EnableDiscoveryClient
 @EnableFeignClients(basePackages = {"com.yupi.yuojbackendserviceclient.service"})
 public class XojBackendCompetitionServiceApplication {

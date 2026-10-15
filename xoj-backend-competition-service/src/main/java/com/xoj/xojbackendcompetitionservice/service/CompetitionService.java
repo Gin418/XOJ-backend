@@ -4,9 +4,13 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionQueryRequest;
 import com.yupi.yuojbackendmodel.model.entity.Competition;
+import com.yupi.yuojbackendmodel.model.entity.CompetitionQuestion;
+import com.yupi.yuojbackendmodel.model.vo.CompetitionDetailVO;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionRankItemVO;
+import com.yupi.yuojbackendmodel.model.vo.UserVO;
 
 import java.util.List;
+import java.util.Map;
 
 public interface CompetitionService extends IService<Competition> {
 
@@ -39,10 +43,36 @@ public interface CompetitionService extends IService<Competition> {
     Boolean deleteCompetition(Long id);
 
     /**
+     * 查询竞赛详情（竞赛全部信息 + 关联题目 id 列表）
+     *
+     * @param id 竞赛 id
+     * @return 竞赛详情 VO
+     */
+    CompetitionDetailVO getCompetitionDetail(Long id);
+
+    /**
      * 查询竞赛排名（按通过数降序、罚时升序）
      *
      * @param competitionId 竞赛 id
      * @return 排名列表
      */
     List<CompetitionRankItemVO> getRankList(Long competitionId);
+
+    /**
+     * 查询用户在竞赛中各题的提交情况（0 未提交、1 提交未通过、2 通过）
+     *
+     * @param competitionId 竞赛 id
+     * @param userId        用户 id
+     * @param questionIds   题目 id 列表
+     * @return 题目 id -> 提交情况
+     */
+    Map<Long, Integer> getQuestionStatusMap(Long competitionId, Long userId, List<Long> questionIds);
+
+    /**
+     * 查询题目关系列表中各题首杀用户信息
+     *
+     * @param relationList 题目关系列表
+     * @return 用户 id -> 用户 VO（脱敏）
+     */
+    Map<Long, UserVO> getFirstAcceptedUserVOMap(List<CompetitionQuestion> relationList);
 }

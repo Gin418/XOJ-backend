@@ -5,9 +5,11 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.yupi.yuojbackendmodel.model.dto.question.QuestionQueryRequest;
 import com.yupi.yuojbackendmodel.model.entity.Question;
+import com.yupi.yuojbackendmodel.model.vo.QuestionSimpleVO;
 import com.yupi.yuojbackendmodel.model.vo.QuestionVO;
 
 import javax.servlet.http.HttpServletRequest;
+import java.util.List;
 
 /**
 * @author 李鱼皮
@@ -50,6 +52,14 @@ public interface QuestionService extends IService<Question> {
      * @return
      */
     Page<QuestionVO> getQuestionVOPage(Page<Question> questionPage, HttpServletRequest request);
+
+    /**
+     * 按题目 id 列表查询题目简信息（题目 id、题号、标题，按传入顺序返回）
+     *
+     * @param ids 题目 id 列表
+     * @return 题目简信息列表
+     */
+    List<QuestionSimpleVO> listSimpleByIds(List<Long> ids);
 
     /**
      * 题目提交数 +1

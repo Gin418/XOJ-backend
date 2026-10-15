@@ -20,5 +20,7 @@ public class Competition {
 
     private String endTime;
 
+    private Long userId;
+
     private String status;
 }

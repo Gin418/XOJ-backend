@@ -20,6 +20,7 @@ import com.yupi.yuojbackendmodel.model.entity.QuestionSubmit;
 import com.yupi.yuojbackendmodel.model.enums.EnumVo;
 import com.yupi.yuojbackendmodel.model.enums.QuestionSubmitLanguageEnum;
 import com.yupi.yuojbackendmodel.model.vo.MySubmitStatsVO;
+import com.yupi.yuojbackendmodel.model.vo.QuestionSimpleVO;
 import com.yupi.yuojbackendmodel.model.vo.QuestionSubmitCountVo;
 import com.yupi.yuojbackendmodel.model.vo.QuestionSubmitVO;
 import com.yupi.yuojbackendmodel.model.vo.QuestionVO;
@@ -212,6 +213,20 @@ public class QuestionController {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
         return ResultUtils.success(questionService.getQuestionVO(question, request));
+    }
+
+    /**
+     * 按题目 id 列表查询题目简信息（题目 id、题号、标题）
+     *
+     * @param questionIds 题目 id 列表
+     * @return
+     */
+    @PostMapping("/simple/list")
+    public BaseResponse<List<QuestionSimpleVO>> listSimpleQuestions(@RequestBody List<Long> questionIds) {
+        if (CollectionUtils.isEmpty(questionIds)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        return ResultUtils.success(questionService.listSimpleByIds(questionIds));
     }
 
     /**

@@ -16,12 +16,16 @@ import com.yupi.yuojbackendmodel.model.entity.CompetitionQuestion;
 import com.yupi.yuojbackendmodel.model.entity.QuestionSubmit;
 import com.yupi.yuojbackendmodel.model.entity.User;
 import com.yupi.yuojbackendmodel.model.enums.JudgeInfoMessageEnum;
+import com.yupi.yuojbackendmodel.model.enums.QuestionStatusEnum;
+import com.yupi.yuojbackendmodel.model.vo.CompetitionDetailVO;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionRankItemVO;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionRankQuestionVO;
+import com.yupi.yuojbackendmodel.model.vo.UserVO;
 import com.yupi.yuojbackendserviceclient.service.QuestionFeignClient;
 import com.yupi.yuojbackendserviceclient.service.UserFeignClient;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,9 +34,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -100,6 +107,75 @@ public class CompetitionServiceImpl extends ServiceImpl<CompetitionMapper, Compe
         ThrowUtils.throwIf(!remove, ErrorCode.OPERATION_ERROR);
         competitionQuestionService.removeByCompetitionId(id);
         return true;
+    }
+
+    @Override
+    public CompetitionDetailVO getCompetitionDetail(Long id) {
+        Competition competition = this.getById(id);
+        ThrowUtils.throwIf(competition == null, ErrorCode.NOT_FOUND_ERROR, "竞赛不存在");
+        // 按题号顺序（A、B、C……）提取关联题目 id 列表
+        List<Long> questionIds = competitionQuestionService.listByCompetitionId(id).stream()
+                .map(CompetitionQuestion::getQuestionId)
+                .collect(Collectors.toList());
+        CompetitionDetailVO detailVO = new CompetitionDetailVO();
+        BeanUtils.copyProperties(competition, detailVO);
+        detailVO.setQuestionIds(questionIds);
+        return detailVO;
+    }
+
+    @Override
+    public Map<Long, Integer> getQuestionStatusMap(Long competitionId, Long userId, List<Long> questionIds) {
+        Map<Long, Integer> statusMap = new HashMap<>();
+        if (CollectionUtils.isEmpty(questionIds)) {
+            return statusMap;
+        }
+        // 默认全部未提交
+        for (Long questionId : questionIds) {
+            statusMap.put(questionId, QuestionStatusEnum.NOT_SUBMITTED.getValue());
+        }
+        if (userId == null || userId <= 0) {
+            return statusMap;
+        }
+        // 当前用户在竞赛中的提交按题目分组
+        List<QuestionSubmit> submitList = questionFeignClient.listCompetitionSubmitsAll(competitionId);
+        Map<Long, List<QuestionSubmit>> questionSubmitMap = submitList.stream()
+                .filter(submit -> userId.equals(submit.getUserId()))
+                .collect(Collectors.groupingBy(QuestionSubmit::getQuestionId));
+        for (Long questionId : questionIds) {
+            List<QuestionSubmit> submits = questionSubmitMap.get(questionId);
+            if (CollectionUtils.isEmpty(submits)) {
+                continue;
+            }
+            boolean accepted = submits.stream()
+                    .anyMatch(submit -> JudgeInfoMessageEnum.ACCEPTED.getValue().equals(submit.getStatus()));
+            statusMap.put(questionId, accepted ? QuestionStatusEnum.PASSED.getValue() : QuestionStatusEnum.FAILED.getValue());
+        }
+        return statusMap;
+    }
+
+    @Override
+    public Map<Long, UserVO> getFirstAcceptedUserVOMap(List<CompetitionQuestion> relationList) {
+        if (CollectionUtils.isEmpty(relationList)) {
+            return Collections.emptyMap();
+        }
+        Set<Long> userIds = relationList.stream()
+                .map(CompetitionQuestion::getFirstAcceptedUserId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (CollectionUtils.isEmpty(userIds)) {
+            return Collections.emptyMap();
+        }
+        // 批量查询首杀用户信息，避免 N+1
+        Map<Long, User> userMap = userFeignClient.listByIds(userIds).stream()
+                .collect(Collectors.toMap(User::getId, Function.identity(), (a, b) -> a));
+        Map<Long, UserVO> userVOMap = new HashMap<>();
+        for (Long userId : userIds) {
+            User user = userMap.get(userId);
+            if (user != null) {
+                userVOMap.put(userId, userFeignClient.getUserVO(user));
+            }
+        }
+        return userVOMap;
     }
 
     @Override

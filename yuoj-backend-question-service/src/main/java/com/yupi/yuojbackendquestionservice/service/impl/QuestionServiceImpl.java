@@ -14,6 +14,7 @@ import com.yupi.yuojbackendmodel.model.dto.question.QuestionQueryRequest;
 import com.yupi.yuojbackendmodel.model.entity.Question;
 import com.yupi.yuojbackendmodel.model.entity.User;
 import com.yupi.yuojbackendmodel.model.enums.QuestionStatusEnum;
+import com.yupi.yuojbackendmodel.model.vo.QuestionSimpleVO;
 import com.yupi.yuojbackendmodel.model.vo.QuestionVO;
 import com.yupi.yuojbackendmodel.model.vo.UserVO;
 import com.yupi.yuojbackendquestionservice.mapper.QuestionMapper;
@@ -28,8 +29,10 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -188,6 +191,27 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question>
         }).collect(Collectors.toList());
         questionVOPage.setRecords(questionVOList);
         return questionVOPage;
+    }
+
+    @Override
+    public List<QuestionSimpleVO> listSimpleByIds(List<Long> ids) {
+        if (CollectionUtils.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        Map<Long, Question> questionMap = this.listByIds(ids).stream()
+                .collect(Collectors.toMap(Question::getId, question -> question, (a, b) -> a));
+        // 按传入的 id 顺序返回
+        return ids.stream()
+                .map(questionMap::get)
+                .filter(Objects::nonNull)
+                .map(question -> {
+                    QuestionSimpleVO simpleVO = new QuestionSimpleVO();
+                    simpleVO.setId(question.getId());
+                    simpleVO.setCustomId(question.getCustomId());
+                    simpleVO.setTitle(question.getTitle());
+                    return simpleVO;
+                })
+                .collect(Collectors.toList());
     }
 
     @Override

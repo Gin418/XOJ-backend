@@ -31,6 +31,11 @@ public class CompetitionQuestionVO {
     private String title;
 
     /**
+     * 当前用户提交情况（0 未提交、1 提交未通过、2 通过，取值 QuestionStatusEnum）
+     */
+    private Integer questionStatus;
+
+    /**
      * 提交数
      */
     private Integer submitNum;
@@ -49,4 +54,9 @@ public class CompetitionQuestionVO {
      * 首个通过用户的提交时间
      */
     private Date firstAcceptedTime;
+
+    /**
+     * 首杀用户信息（脱敏）
+     */
+    private UserVO firstAcceptedUserVO;
 }

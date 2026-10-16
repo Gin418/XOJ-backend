@@ -8,28 +8,46 @@ import java.util.List;
 public interface CompetitionQuestionService extends IService<CompetitionQuestion> {
 
     /**
-     * 题目顺序转题号：1→A，2→B……超过 26 道题时回退为数字
+     * 题目顺序转题号：1→A，2→B……26→Z，27→AA，28→AB……（Excel 列名规则）
      */
     default String convertToQuestionNo(Integer questionOrder) {
         if (questionOrder == null || questionOrder < 1) {
             return "";
         }
-        if (questionOrder <= 26) {
-            return String.valueOf((char) ('A' + questionOrder - 1));
+        StringBuilder sb = new StringBuilder();
+        int n = questionOrder;
+        while (n > 0) {
+            n--;
+            sb.append((char) ('A' + n % 26));
+            n /= 26;
         }
-        return String.valueOf(questionOrder);
+        return sb.reverse().toString();
     }
 
     /**
-     * 题号转题目顺序：A→1，B→2……数字题号原样返回
+     * 题号转题目顺序：A→1，B→2……AA→27（Excel 列名规则），数字题号原样返回
      */
     default Integer convertToQuestionOrder(String customId) {
         if (customId == null) {
             return null;
         }
         String upper = customId.trim().toUpperCase();
-        if (upper.length() == 1 && upper.charAt(0) >= 'A' && upper.charAt(0) <= 'Z') {
-            return upper.charAt(0) - 'A' + 1;
+        if (upper.isEmpty()) {
+            return null;
+        }
+        boolean allLetters = true;
+        for (char c : upper.toCharArray()) {
+            if (c < 'A' || c > 'Z') {
+                allLetters = false;
+                break;
+            }
+        }
+        if (allLetters) {
+            int order = 0;
+            for (char c : upper.toCharArray()) {
+                order = order * 26 + (c - 'A' + 1);
+            }
+            return order;
         }
         try {
             int order = Integer.parseInt(upper);

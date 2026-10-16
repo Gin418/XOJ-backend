@@ -209,7 +209,7 @@ public class CompetitionController {
      * 通过竞赛 id 和题号（customId，如 A、B、C）查询题目详情
      *
      * @param competitionId 竞赛 id
-     * @param customId      题号（A、B、C……或数字）
+     * @param customId      题号（A、B、C……Z、AA、AB……或数字）
      */
     @GetMapping("/questions/{competitionId}/{customId}")
     public BaseResponse<CompetitionQuestionDetailVO> getCompetitionQuestionDetail(@PathVariable Long competitionId,
@@ -245,35 +245,6 @@ public class CompetitionController {
         }
         log.info("getCompetitionRank request, competitionId = {}", competitionId);
         return ResultUtils.success(competitionService.getRankList(competitionId));
-    }
-
-    /**
-     * 题目顺序转题号：1→A，2→B……超过 26 道题时回退为数字
-     */
-    private String convertToQuestionNo(Integer questionOrder) {
-        if (questionOrder == null || questionOrder < 1) {
-            return "";
-        }
-        if (questionOrder <= 26) {
-            return String.valueOf((char) ('A' + questionOrder - 1));
-        }
-        return String.valueOf(questionOrder);
-    }
-
-    /**
-     * 题号转题目顺序：A→1，B→2……数字题号原样返回
-     */
-    private Integer convertToQuestionOrder(String customId) {
-        String upper = customId.trim().toUpperCase();
-        if (upper.length() == 1 && upper.charAt(0) >= 'A' && upper.charAt(0) <= 'Z') {
-            return upper.charAt(0) - 'A' + 1;
-        }
-        try {
-            int order = Integer.parseInt(upper);
-            return order >= 1 ? order : null;
-        } catch (NumberFormatException e) {
-            return null;
-        }
     }
 
     @PostMapping("/page")

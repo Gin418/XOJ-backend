@@ -2,8 +2,10 @@ package com.xoj.xojbackendcompetitionservice.service.impl;
 
 import cn.hutool.core.date.DateUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.xoj.xojbackendcompetitionservice.mapper.CompetitionMapper;
+import com.xoj.xojbackendcompetitionservice.mapper.UserCompetitionMapper;
 import com.xoj.xojbackendcompetitionservice.service.CompetitionQuestionService;
 import com.xoj.xojbackendcompetitionservice.service.CompetitionService;
 import com.yupi.yuojbackendcommon.common.ErrorCode;
@@ -11,15 +13,20 @@ import com.yupi.yuojbackendcommon.constant.CommonConstant;
 import com.yupi.yuojbackendcommon.exception.ThrowUtils;
 import com.yupi.yuojbackendcommon.utils.SqlUtils;
 import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionQueryRequest;
+import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionSubmitInnerQueryRequest;
 import com.yupi.yuojbackendmodel.model.entity.Competition;
 import com.yupi.yuojbackendmodel.model.entity.CompetitionQuestion;
 import com.yupi.yuojbackendmodel.model.entity.QuestionSubmit;
 import com.yupi.yuojbackendmodel.model.entity.User;
+import com.yupi.yuojbackendmodel.model.entity.UserCompetition;
+import com.yupi.yuojbackendmodel.model.enums.CompetitionStatusEnum;
 import com.yupi.yuojbackendmodel.model.enums.JudgeInfoMessageEnum;
 import com.yupi.yuojbackendmodel.model.enums.QuestionStatusEnum;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionDetailVO;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionRankItemVO;
+import com.yupi.yuojbackendmodel.model.vo.CompetitionRankQuestionInfoVO;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionRankQuestionVO;
+import com.yupi.yuojbackendmodel.model.vo.QuestionSimpleVO;
 import com.yupi.yuojbackendmodel.model.vo.UserVO;
 import com.yupi.yuojbackendserviceclient.service.QuestionFeignClient;
 import com.yupi.yuojbackendserviceclient.service.UserFeignClient;
@@ -55,6 +62,9 @@ public class CompetitionServiceImpl extends ServiceImpl<CompetitionMapper, Compe
     private CompetitionQuestionService competitionQuestionService;
 
     @Resource
+    private UserCompetitionMapper userCompetitionMapper;
+
+    @Resource
     private QuestionFeignClient questionFeignClient;
 
     @Resource
@@ -83,6 +93,7 @@ public class CompetitionServiceImpl extends ServiceImpl<CompetitionMapper, Compe
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long addCompetition(Competition competition, List<Long> questionIds) {
+        refreshStatus(competition);
         boolean save = this.save(competition);
         ThrowUtils.throwIf(!save, ErrorCode.OPERATION_ERROR);
         competitionQuestionService.saveRelations(competition.getId(), questionIds);
@@ -92,12 +103,37 @@ public class CompetitionServiceImpl extends ServiceImpl<CompetitionMapper, Compe
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Boolean updateCompetition(Competition competition, List<Long> questionIds) {
+        refreshStatus(competition);
         boolean update = this.updateById(competition);
         ThrowUtils.throwIf(!update, ErrorCode.OPERATION_ERROR);
         // 先删旧关系再写新关系，保证与最新题目列表一致
         competitionQuestionService.removeByCompetitionId(competition.getId());
         competitionQuestionService.saveRelations(competition.getId(), questionIds);
         return true;
+    }
+
+    /**
+     * 根据开始/结束时间刷新竞赛状态，创建/修改时立即生效，无需等待定时任务。
+     * 前提：startTime / endTime 统一存为 yyyy-MM-dd HH:mm:ss 格式，字符串可直接按字典序比较时间先后。
+     *
+     * @param competition 竞赛（状态计算完成后写回 status 字段）
+     */
+    private void refreshStatus(Competition competition) {
+        String now = DateUtil.now();
+        String startTime = competition.getStartTime();
+        String endTime = competition.getEndTime();
+        String status;
+        // 已结束：endTime 非空且已到
+        if (StringUtils.isNotBlank(endTime) && endTime.compareTo(now) <= 0) {
+            status = CompetitionStatusEnum.ENDED.getCode();
+        } else if (StringUtils.isNotBlank(startTime) && startTime.compareTo(now) <= 0) {
+            // 进行中：startTime 已到且 endTime 未到（含 endTime 为空）
+            status = CompetitionStatusEnum.ONGOING.getCode();
+        } else {
+            // 待开始：startTime 未到（startTime 为空时默认待开始）
+            status = CompetitionStatusEnum.PENDING.getCode();
+        }
+        competition.setStatus(status);
     }
 
     @Override
@@ -179,6 +215,34 @@ public class CompetitionServiceImpl extends ServiceImpl<CompetitionMapper, Compe
     }
 
     @Override
+    public List<CompetitionRankQuestionInfoVO> getRankQuestionInfoList(Long competitionId) {
+        List<CompetitionQuestion> relationList = competitionQuestionService.listByCompetitionId(competitionId);
+        if (CollectionUtils.isEmpty(relationList)) {
+            return Collections.emptyList();
+        }
+        // 按题号顺序（questionOrder 升序）返回
+        relationList.sort(Comparator.comparing(CompetitionQuestion::getQuestionOrder));
+        // 批量查询题目简信息（标题），避免 N+1
+        List<Long> questionIds = relationList.stream()
+                .map(CompetitionQuestion::getQuestionId)
+                .collect(Collectors.toList());
+        Map<Long, QuestionSimpleVO> simpleVOMap = questionFeignClient.listQuestionSimpleByIds(questionIds).stream()
+                .collect(Collectors.toMap(QuestionSimpleVO::getId, simpleVO -> simpleVO, (a, b) -> a));
+        return relationList.stream().map(relation -> {
+            CompetitionRankQuestionInfoVO infoVO = new CompetitionRankQuestionInfoVO();
+            infoVO.setQuestionId(relation.getQuestionId());
+            infoVO.setCustomId(competitionQuestionService.convertToQuestionNo(relation.getQuestionOrder()));
+            infoVO.setSubmitNum(relation.getSubmitNum());
+            infoVO.setAcceptedNum(relation.getAcceptedNum());
+            QuestionSimpleVO simpleVO = simpleVOMap.get(relation.getQuestionId());
+            if (simpleVO != null) {
+                infoVO.setTitle(simpleVO.getTitle());
+            }
+            return infoVO;
+        }).collect(Collectors.toList());
+    }
+
+    @Override
     public List<CompetitionRankItemVO> getRankList(Long competitionId) {
         Competition competition = this.getById(competitionId);
         ThrowUtils.throwIf(competition == null, ErrorCode.NOT_FOUND_ERROR, "竞赛不存在");
@@ -189,16 +253,27 @@ public class CompetitionServiceImpl extends ServiceImpl<CompetitionMapper, Compe
         if (CollectionUtils.isEmpty(relationList)) {
             return Collections.emptyList();
         }
-        // 拉取竞赛全部提交（按提交时间升序），按 用户 -> 题目 分组
-        List<QuestionSubmit> submitList = questionFeignClient.listCompetitionSubmitsAll(competitionId);
+        // 先从用户竞赛表查询参加竞赛的用户
+        List<UserCompetition> userCompetitionList = userCompetitionMapper.selectList(
+                new QueryWrapper<UserCompetition>().eq("competitionId", competitionId));
+        if (CollectionUtils.isEmpty(userCompetitionList)) {
+            return Collections.emptyList();
+        }
+        List<Long> joinUserIds = userCompetitionList.stream()
+                .map(UserCompetition::getUserId)
+                .collect(Collectors.toList());
+        // 再根据用户 id 列表和竞赛 id 批量查询提交记录（按提交时间升序），按 用户 -> 题目 分组
+        CompetitionSubmitInnerQueryRequest submitQueryRequest = new CompetitionSubmitInnerQueryRequest();
+        submitQueryRequest.setCompetitionId(competitionId);
+        submitQueryRequest.setUserIds(joinUserIds);
+        List<QuestionSubmit> submitList = questionFeignClient.listCompetitionSubmitsByUserIds(submitQueryRequest);
         Map<Long, Map<Long, List<QuestionSubmit>>> userQuestionSubmitMap = submitList.stream()
                 .collect(Collectors.groupingBy(QuestionSubmit::getUserId,
                         Collectors.groupingBy(QuestionSubmit::getQuestionId)));
 
         List<CompetitionRankItemVO> rankList = new ArrayList<>();
-        for (Map.Entry<Long, Map<Long, List<QuestionSubmit>>> entry : userQuestionSubmitMap.entrySet()) {
-            Long userId = entry.getKey();
-            Map<Long, List<QuestionSubmit>> questionSubmitMap = entry.getValue();
+        for (Long userId : joinUserIds) {
+            Map<Long, List<QuestionSubmit>> questionSubmitMap = userQuestionSubmitMap.getOrDefault(userId, Collections.emptyMap());
             CompetitionRankItemVO itemVO = new CompetitionRankItemVO();
             itemVO.setUserId(userId);
             int acceptedCount = 0;
@@ -209,7 +284,6 @@ public class CompetitionServiceImpl extends ServiceImpl<CompetitionMapper, Compe
                 CompetitionRankQuestionVO questionVO = new CompetitionRankQuestionVO();
                 List<QuestionSubmit> submits = questionSubmitMap.get(relation.getQuestionId());
                 int submitCount = submits == null ? 0 : submits.size();
-                questionVO.setSubmitCount(submitCount);
                 // 提交已按时间升序，第一条 Accepted 即首次通过
                 QuestionSubmit firstAccepted = null;
                 if (submits != null) {
@@ -231,6 +305,9 @@ public class CompetitionServiceImpl extends ServiceImpl<CompetitionMapper, Compe
                     questionVO.setFirstBlood(userId.equals(relation.getFirstAcceptedUserId()));
                     // 罚时：首次通过前的失败提交数 × 20 分钟 + 通过记录与竞赛开始的秒差（通过后的提交不罚）
                     int failCountBeforeAccept = submits.indexOf(firstAccepted);
+                    // 提交次数只计到首次通过为止（通过后的提交不计入）
+                    submitCount = failCountBeforeAccept + 1;
+                    questionVO.setSubmitCount(submitCount);
                     penaltyTime += (long) failCountBeforeAccept * PENALTY_SECONDS_PER_FAIL + acceptTimeSeconds;
                 } else {
                     questionVO.setFirstBlood(false);
@@ -251,6 +328,9 @@ public class CompetitionServiceImpl extends ServiceImpl<CompetitionMapper, Compe
                 .thenComparing(CompetitionRankItemVO::getUserId));
         // 填充排名与用户信息
         List<Long> userIds = rankList.stream().map(CompetitionRankItemVO::getUserId).collect(Collectors.toList());
+        if (CollectionUtils.isEmpty(userIds)) {
+            return rankList;
+        }
         Map<Long, User> userMap = userFeignClient.listByIds(userIds).stream()
                 .collect(Collectors.toMap(User::getId, Function.identity(), (a, b) -> a));
         for (int i = 0; i < rankList.size(); i++) {
@@ -259,5 +339,17 @@ public class CompetitionServiceImpl extends ServiceImpl<CompetitionMapper, Compe
             itemVO.setUserVO(userFeignClient.getUserVO(userMap.get(itemVO.getUserId())));
         }
         return rankList;
+    }
+
+    @Override
+    public Page<CompetitionRankItemVO> getRankPage(Long competitionId, long current, long pageSize) {
+        // 排名需全量统计并排序后才能确定名次，排序完成后按页截取
+        List<CompetitionRankItemVO> rankList = getRankList(competitionId);
+        Page<CompetitionRankItemVO> page = new Page<>(Math.max(current, 1), Math.max(pageSize, 1));
+        page.setTotal(rankList.size());
+        int fromIndex = (int) Math.min((page.getCurrent() - 1) * page.getSize(), rankList.size());
+        int toIndex = (int) Math.min(fromIndex + page.getSize(), rankList.size());
+        page.setRecords(rankList.subList(fromIndex, toIndex));
+        return page;
     }
 }

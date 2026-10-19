@@ -58,14 +58,14 @@ public class CompetitionSubmitVO implements Serializable {
     private Long userId;
 
     /**
-     * 用户昵称
+     * 提交代码（仅自己提交的代码返回，他人提交的为 null）
      */
-    private String userName;
+    private String code;
 
     /**
-     * 用户头像
+     * 提交用户信息（脱敏）
      */
-    private String userAvatar;
+    private UserVO userVO;
 
     /**
      * 提交时间

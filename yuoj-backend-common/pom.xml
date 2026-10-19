@@ -15,6 +15,16 @@
             <artifactId>aliyun-sdk-oss</artifactId>
             <version>3.18.4</version>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.aliyun</groupId>
+            <artifactId>dysmsapi20170525</artifactId>
+            <!-- 请将 'the-latest-version' 替换为最新版本号：https://mvnrepository.com/artifact/com.aliyun/dysmsapi20170525 -->
+            <version>4.6.0</version>
+        </dependency>
     </dependencies>
 
     <artifactId>yuoj-backend-common</artifactId>

@@ -26,4 +26,9 @@ public class GatewayConsts {
     public static final String ERROR_LOST_TOKEN = "GATEWAY_LOST_TOKEN";
     public static final String ERROR_UNKNOWN = "GATEWAY_UNKNOWN";
     public static final String HEADER_TOKEN = "uc-token";
+
+    /**
+     * 未登录时网关透传给下游服务的占位用户 id（哨兵值，非真实用户）
+     */
+    public static final long NOT_LOGIN_USER_ID = -999L;
 }

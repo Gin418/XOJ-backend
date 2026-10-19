@@ -148,6 +148,7 @@ public class QuestionSubmitServiceImpl extends ServiceImpl<QuestionSubmitMapper,
         }
         List<Long> questionIds = questionSubmitQueryRequest.getQuestionIds();
         Long userId = questionSubmitQueryRequest.getUserId();
+        List<Long> userIds = questionSubmitQueryRequest.getUserIds();
         String sortField = questionSubmitQueryRequest.getSortField();
         String sortOrder = questionSubmitQueryRequest.getSortOrder();
         String status = questionSubmitQueryRequest.getStatus();
@@ -155,6 +156,7 @@ public class QuestionSubmitServiceImpl extends ServiceImpl<QuestionSubmitMapper,
         // 拼接查询条件
         queryWrapper.eq(StringUtils.isNotBlank(language), "language", language);
         queryWrapper.eq(ObjectUtils.isNotEmpty(userId), "userId", userId);
+        queryWrapper.in(CollectionUtils.isNotEmpty(userIds), "userId", userIds);
         queryWrapper.eq(StringUtils.isNotBlank(status), "status", status);
         queryWrapper.in(ObjectUtils.isNotEmpty(questionIds), "questionId", questionIds);
         queryWrapper.eq("isDelete", false);

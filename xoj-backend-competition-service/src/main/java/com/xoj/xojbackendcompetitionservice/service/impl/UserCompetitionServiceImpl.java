@@ -32,11 +32,7 @@ public class UserCompetitionServiceImpl extends ServiceImpl<UserCompetitionMappe
                         && DateUtil.parse(competition.getEndTime()).isBefore(new Date()),
                 ErrorCode.OPERATION_ERROR, "竞赛已结束，无法报名");
         // 校验用户未重复参加
-        QueryWrapper<UserCompetition> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("competitionId", competitionId);
-        queryWrapper.eq("userId", userId);
-        long count = this.count(queryWrapper);
-        ThrowUtils.throwIf(count > 0, ErrorCode.OPERATION_ERROR, "已参加该竞赛");
+        ThrowUtils.throwIf(this.hasJoined(competitionId, userId), ErrorCode.OPERATION_ERROR, "已参加该竞赛");
         // 新增参加记录
         UserCompetition userCompetition = new UserCompetition();
         userCompetition.setCompetitionId(competitionId);
@@ -45,5 +41,13 @@ public class UserCompetitionServiceImpl extends ServiceImpl<UserCompetitionMappe
         boolean save = this.save(userCompetition);
         ThrowUtils.throwIf(!save, ErrorCode.OPERATION_ERROR);
         return userCompetition.getId();
+    }
+
+    @Override
+    public boolean hasJoined(Long competitionId, Long userId) {
+        QueryWrapper<UserCompetition> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("competitionId", competitionId);
+        queryWrapper.eq("userId", userId);
+        return this.count(queryWrapper) > 0;
     }
 }

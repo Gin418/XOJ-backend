@@ -18,6 +18,21 @@ public interface UserConstant {
      */
     long USER_LOGIN_EXPIRE_SECONDS = 30L * 24 * 60 * 60;
 
+    /**
+     * 短信验证码 Redis 键前缀（手机号关联）
+     */
+    String USER_CAPTCHA_KEY = "yuoj:user:captcha:";
+
+    /**
+     * 邮箱验证码 Redis 键前缀（邮箱关联）
+     */
+    String USER_EMAIL_CAPTCHA_KEY = "yuoj:user:email:captcha:";
+
+    /**
+     * 短信验证码过期时间：5 分钟（秒）
+     */
+    long USER_CAPTCHA_EXPIRE_SECONDS = 5L * 60;
+
     //  region 权限
 
     /**

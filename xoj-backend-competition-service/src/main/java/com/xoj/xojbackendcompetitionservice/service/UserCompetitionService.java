@@ -13,4 +13,13 @@ public interface UserCompetitionService extends IService<UserCompetition> {
      * @return 关系记录 id
      */
     Long joinCompetition(Long competitionId, Long userId);
+
+    /**
+     * 查询用户是否已参加竞赛
+     *
+     * @param competitionId 竞赛 id
+     * @param userId        用户 id
+     * @return 是否已参加
+     */
+    boolean hasJoined(Long competitionId, Long userId);
 }

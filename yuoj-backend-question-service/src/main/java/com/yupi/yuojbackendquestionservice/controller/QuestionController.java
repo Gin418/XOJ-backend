@@ -8,6 +8,7 @@ import com.yupi.yuojbackendcommon.common.BaseResponse;
 import com.yupi.yuojbackendcommon.common.DeleteRequest;
 import com.yupi.yuojbackendcommon.common.ErrorCode;
 import com.yupi.yuojbackendcommon.common.ResultUtils;
+import com.yupi.yuojbackendcommon.constant.GatewayConsts;
 import com.yupi.yuojbackendcommon.constant.UserConstant;
 import com.yupi.yuojbackendcommon.exception.BusinessException;
 import com.yupi.yuojbackendcommon.exception.ThrowUtils;
@@ -17,6 +18,7 @@ import com.yupi.yuojbackendmodel.model.dto.questionsubmit.QuestionSubmitAddReque
 import com.yupi.yuojbackendmodel.model.dto.questionsubmit.QuestionSubmitQueryRequest;
 import com.yupi.yuojbackendmodel.model.entity.Question;
 import com.yupi.yuojbackendmodel.model.entity.QuestionSubmit;
+import com.yupi.yuojbackendmodel.model.entity.User;
 import com.yupi.yuojbackendmodel.model.enums.EnumVo;
 import com.yupi.yuojbackendmodel.model.enums.QuestionSubmitLanguageEnum;
 import com.yupi.yuojbackendmodel.model.vo.MySubmitStatsVO;
@@ -27,6 +29,7 @@ import com.yupi.yuojbackendmodel.model.vo.QuestionVO;
 import com.yupi.yuojbackendquestionservice.service.FileService;
 import com.yupi.yuojbackendquestionservice.service.QuestionService;
 import com.yupi.yuojbackendquestionservice.service.QuestionSubmitService;
+import com.yupi.yuojbackendserviceclient.service.UserFeignClient;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.poi.util.StringUtil;
@@ -59,6 +62,9 @@ public class QuestionController {
 
     @Resource
     private FileService fileService;
+
+    @Resource
+    private UserFeignClient userFeignClient;
 
     private final static Gson GSON = new Gson();
 
@@ -365,9 +371,27 @@ public class QuestionController {
                                                                          HttpServletRequest request) {
         long current = questionSubmitQueryRequest.getCurrent();
         long size = questionSubmitQueryRequest.getPageSize();
-        // 获取登录用户（允许未登录）
+        // 只查自己的提交时，必须已登录；未登录时该条件不生效，按公开列表正常查询
         if (questionSubmitQueryRequest.getOnlyMine()) {
-            questionSubmitQueryRequest.setUserId(GatewayHeaderUtil.getUserId());
+            Long loginUserId = GatewayHeaderUtil.getUserId();
+            if (loginUserId > 0) {
+                questionSubmitQueryRequest.setUserId(loginUserId);
+            } else {
+                // 未登录：onlyMine 条件不生效，正常查询公开提交列表
+                questionSubmitQueryRequest.setOnlyMine(false);
+            }
+        }
+        // 按用户昵称模糊查询，先转为用户 id 列表
+        String userName = questionSubmitQueryRequest.getUserName();
+        if (StringUtils.isNotBlank(userName)) {
+            List<Long> userIds = userFeignClient.listByUserName(userName).stream()
+                    .map(User::getId)
+                    .collect(Collectors.toList());
+            // 未匹配到任何用户，直接返回空页
+            if (CollectionUtils.isEmpty(userIds)) {
+                return ResultUtils.success(new Page<>());
+            }
+            questionSubmitQueryRequest.setUserIds(userIds);
         }
         QuestionQueryRequest questionQueryRequest = new QuestionQueryRequest();
         questionQueryRequest.setCustomId(questionSubmitQueryRequest.getCustomId());

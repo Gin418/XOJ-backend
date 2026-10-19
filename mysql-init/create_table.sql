@@ -14,6 +14,8 @@ create table if not exists user
     id           bigint auto_increment comment 'id' primary key,
     userAccount  varchar(256)                           not null comment '账号',
     userPassword varchar(512)                           not null comment '密码',
+    phone        varchar(32)                            null comment '手机号',
+    email        varchar(52)                            null comment '邮箱',
     unionId      varchar(256)                           null comment '微信开放平台id',
     mpOpenId     varchar(256)                           null comment '公众号openId',
     userName     varchar(256)                           null comment '用户昵称',
@@ -156,3 +158,12 @@ create table if not exists competition_question
     index idx_questionId (questionId),
     unique key uk_competition_question (competitionId, questionId)
 ) comment '竞赛题目关系' collate = utf8mb4_unicode_ci;
+
+-- 存量库升级：用户表新增手机号字段
+alter table user
+    add column phone varchar(32) null comment '手机号' after userPassword;
+
+-- 存量库升级：用户表新增邮箱字段
+alter table user
+    add column email varchar(256) null comment '邮箱' after phone;
+

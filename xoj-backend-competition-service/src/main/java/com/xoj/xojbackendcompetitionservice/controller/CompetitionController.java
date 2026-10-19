@@ -7,6 +7,7 @@ import com.xoj.xojbackendcompetitionservice.service.CompetitionService;
 import com.xoj.xojbackendcompetitionservice.service.UserCompetitionService;
 import com.yupi.yuojbackendcommon.common.BaseResponse;
 import com.yupi.yuojbackendcommon.common.ErrorCode;
+import com.yupi.yuojbackendcommon.common.PageRequest;
 import com.yupi.yuojbackendcommon.common.ResultUtils;
 import com.yupi.yuojbackendcommon.constant.UserConstant;
 import com.yupi.yuojbackendcommon.exception.BusinessException;
@@ -25,6 +26,7 @@ import com.yupi.yuojbackendmodel.model.vo.CompetitionQuestionDetailVO;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionQuestionSimpleVO;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionQuestionVO;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionRankItemVO;
+import com.yupi.yuojbackendmodel.model.vo.CompetitionRankQuestionInfoVO;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionVO;
 import com.yupi.yuojbackendmodel.model.vo.QuestionVO;
 import com.yupi.yuojbackendmodel.model.vo.UserVO;
@@ -80,6 +82,24 @@ public class CompetitionController {
         return ResultUtils.success(id);
     }
 
+    /**
+     * 查询当前用户是否已参加竞赛
+     *
+     * @param competitionId 竞赛 id
+     */
+    @GetMapping("/join/status/{competitionId}")
+    public BaseResponse<Boolean> getJoinStatus(@PathVariable Long competitionId) {
+        if (competitionId == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        Long userId = GatewayHeaderUtil.getUserId();
+        if (userId <= 0) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
+        }
+        log.info("getJoinStatus request, competitionId = {}", competitionId);
+        return ResultUtils.success(userCompetitionService.hasJoined(competitionId, userId));
+    }
+
     @PostMapping("/add")
     public BaseResponse<Long> addCompetition(@RequestBody CompetitionAddRequest competitionAddRequest) {
         if (competitionAddRequest == null) {
@@ -116,9 +136,6 @@ public class CompetitionController {
 
     @GetMapping("/{id}")
     public BaseResponse<CompetitionVO> getCompetition(@PathVariable Long id) {
-        if (!UserConstant.ADMIN_ROLE.equals(GatewayHeaderUtil.getUserRole())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
-        }
         Competition competition = competitionService.getById(id);
         ThrowUtils.throwIf(competition == null, ErrorCode.NOT_FOUND_ERROR);
         return ResultUtils.success(CompetitionVO.objToVo(competition));
@@ -133,9 +150,6 @@ public class CompetitionController {
     public BaseResponse<CompetitionDetailVO> getCompetitionDetail(@PathVariable Long id) {
         if (id == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
-        if (!UserConstant.ADMIN_ROLE.equals(GatewayHeaderUtil.getUserRole())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
         }
         log.info("getCompetitionDetail request, id = {}", id);
         return ResultUtils.success(competitionService.getCompetitionDetail(id));
@@ -234,17 +248,34 @@ public class CompetitionController {
     }
 
     /**
-     * 根据竞赛 id 查询排名（通过数、罚时、每题情况、用户信息）
+     * 根据竞赛 id 查询排名页题目统计（题目 id、题号、标题、提交数、通过数）
      *
      * @param competitionId 竞赛 id
      */
-    @GetMapping("/rank/{competitionId}")
-    public BaseResponse<List<CompetitionRankItemVO>> getCompetitionRank(@PathVariable Long competitionId) {
+    @GetMapping("/rank/questions/{competitionId}")
+    public BaseResponse<List<CompetitionRankQuestionInfoVO>> getRankQuestionInfoList(@PathVariable Long competitionId) {
         if (competitionId == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        log.info("getCompetitionRank request, competitionId = {}", competitionId);
-        return ResultUtils.success(competitionService.getRankList(competitionId));
+        log.info("getRankQuestionInfoList request, competitionId = {}", competitionId);
+        return ResultUtils.success(competitionService.getRankQuestionInfoList(competitionId));
+    }
+
+    /**
+     * 根据竞赛 id 分页查询排名（通过数、罚时、每题情况、用户信息）
+     *
+     * @param competitionId 竞赛 id
+     */
+    @PostMapping("/rank/{competitionId}")
+    public BaseResponse<Page<CompetitionRankItemVO>> getCompetitionRank(@PathVariable Long competitionId,
+                                                                        @RequestBody PageRequest pageRequest) {
+        if (competitionId == null || pageRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        log.info("getCompetitionRank request, competitionId = {}, current = {}, pageSize = {}",
+                competitionId, pageRequest.getCurrent(), pageRequest.getPageSize());
+        return ResultUtils.success(competitionService.getRankPage(
+                competitionId, pageRequest.getCurrent(), pageRequest.getPageSize()));
     }
 
     @PostMapping("/page")

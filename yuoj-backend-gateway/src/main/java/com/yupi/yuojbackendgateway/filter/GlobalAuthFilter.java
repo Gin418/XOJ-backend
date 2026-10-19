@@ -37,9 +37,13 @@ public class GlobalAuthFilter implements GlobalFilter, Ordered {
      * 免登录放行的路径白名单（含网关路由前缀）
      */
     private static final String[] WHITE_LIST = {
-            // 用户服务：登录、注册、头像上传
+            // 用户服务：登录、注册、验证码、找回密码、头像上传
             "/api/user/register",
             "/api/user/login",
+            "/api/user/login/sms",
+            "/api/user/reset/password",
+            "/api/user/captcha/send",
+            "/api/user/captcha/send/email",
             "/api/user/file/upload",
             // 题目服务：公开查询接口
             "/api/question/get/vo",
@@ -50,6 +54,8 @@ public class GlobalAuthFilter implements GlobalFilter, Ordered {
             "/api/question/stats/**",
             "/api/question/language/select",
             "/api/question/file/upload",
+            // 竞赛服务
+            "/api/competition/page",
             // 接口文档
             "/doc.html",
             "/webjars/**",
@@ -73,7 +79,7 @@ public class GlobalAuthFilter implements GlobalFilter, Ordered {
         }
         // 通过 token 从 Redis 中获取登录用户信息
         User loginUser = LoginUserUtil.getLoginUser(stringRedisTemplate, token, User.class);
-        Long userId = loginUser != null ? loginUser.getId() : 999;
+        Long userId = loginUser != null ? loginUser.getId() : GatewayConsts.NOT_LOGIN_USER_ID;
         String userName = loginUser != null ? loginUser.getUserName() : null;
         String userRole = loginUser != null ? loginUser.getUserRole() : null;
         // 将用户信息透传给下游服务

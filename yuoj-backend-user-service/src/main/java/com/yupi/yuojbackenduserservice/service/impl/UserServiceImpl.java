@@ -1,14 +1,20 @@
 package com.yupi.yuojbackenduserservice.service.impl;
 
+import cn.hutool.core.lang.Validator;
+import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.google.gson.Gson;
 import com.yupi.yuojbackendcommon.common.ErrorCode;
 import com.yupi.yuojbackendcommon.constant.CommonConstant;
+import com.yupi.yuojbackendcommon.enums.SmsEnum;
 import com.yupi.yuojbackendcommon.exception.BusinessException;
+import com.yupi.yuojbackendcommon.exception.ThrowUtils;
 import com.yupi.yuojbackendcommon.utils.JwtUtil;
 import com.yupi.yuojbackendcommon.utils.LoginUserUtil;
+import com.yupi.yuojbackendcommon.utils.MailUtil;
+import com.yupi.yuojbackendcommon.utils.SmsUtil;
 import com.yupi.yuojbackendcommon.utils.SqlUtils;
 import com.yupi.yuojbackendmodel.model.dto.user.UserQueryRequest;
 import com.yupi.yuojbackendmodel.model.entity.User;
@@ -28,10 +34,16 @@ import org.springframework.util.DigestUtils;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import static com.yupi.yuojbackendcommon.constant.UserConstant.USER_CAPTCHA_EXPIRE_SECONDS;
+import static com.yupi.yuojbackendcommon.constant.UserConstant.USER_CAPTCHA_KEY;
+import static com.yupi.yuojbackendcommon.constant.UserConstant.USER_EMAIL_CAPTCHA_KEY;
 import static com.yupi.yuojbackendcommon.constant.UserConstant.USER_LOGIN_EXPIRE_SECONDS;
 import static com.yupi.yuojbackendcommon.constant.UserConstant.USER_LOGIN_TOKEN_KEY;
 
@@ -51,15 +63,23 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
      */
     private static final String SALT = "yupi";
 
+    /**
+     * 手机号正则
+     */
+    private static final Pattern PHONE_PATTERN = Pattern.compile("^1[3-9]\\d{9}$");
+
     private static final Gson GSON = new Gson();
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
+    @Resource
+    private MailUtil mailUtil;
+
     @Override
-    public long userRegister(String userAccount, String userPassword, String checkPassword) {
+    public long userRegister(String userAccount, String userPassword, String checkPassword, String email, String captcha) {
         // 1. 校验
-        if (StringUtils.isAnyBlank(userAccount, userPassword, checkPassword)) {
+        if (StringUtils.isAnyBlank(userAccount, userPassword, checkPassword, email, captcha)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
         }
         if (userAccount.length() < 4) {
@@ -72,6 +92,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (!userPassword.equals(checkPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "两次输入的密码不一致");
         }
+        // 邮箱格式校验
+        ThrowUtils.throwIf(!Validator.isEmail(email), ErrorCode.PARAMS_ERROR, "邮箱格式错误");
+        // 校验邮箱验证码（一次性使用，校验通过即删除）
+        String captchaKey = USER_EMAIL_CAPTCHA_KEY + email;
+        String cachedCode = stringRedisTemplate.opsForValue().get(captchaKey);
+        ThrowUtils.throwIf(StringUtils.isBlank(cachedCode), ErrorCode.OPERATION_ERROR, "验证码已过期，请重新获取");
+        ThrowUtils.throwIf(!cachedCode.equals(captcha), ErrorCode.OPERATION_ERROR, "验证码错误");
+        stringRedisTemplate.delete(captchaKey);
         synchronized (userAccount.intern()) {
             // 账户不能重复
             QueryWrapper<User> queryWrapper = new QueryWrapper<>();
@@ -80,12 +108,22 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             if (count > 0) {
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号重复");
             }
+            // 邮箱不能重复
+            QueryWrapper<User> emailQueryWrapper = new QueryWrapper<>();
+            emailQueryWrapper.eq("email", email);
+            long emailCount = this.baseMapper.selectCount(emailQueryWrapper);
+            if (emailCount > 0) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "邮箱已被注册");
+            }
             // 2. 加密
             String encryptPassword = DigestUtils.md5DigestAsHex((SALT + userPassword).getBytes());
             // 3. 插入数据
             User user = new User();
             user.setUserAccount(userAccount);
+            user.setUserName(userAccount);
             user.setUserPassword(encryptPassword);
+            user.setEmail(email);
+            user.setUserAvatar("https://xoj-914.oss-cn-hangzhou.aliyuncs.com/user/9e4a5321-156b-42ec-9484-695d8927e226.jpg");
             boolean saveResult = this.save(user);
             if (!saveResult) {
                 throw new BusinessException(ErrorCode.SYSTEM_ERROR, "注册失败，数据库错误");
@@ -108,9 +146,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         }
         // 2. 加密
         String encryptPassword = DigestUtils.md5DigestAsHex((SALT + userPassword).getBytes());
-        // 查询用户是否存在
+        // 查询用户是否存在（支持账号或邮箱登录）
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("userAccount", userAccount);
+        if (Validator.isEmail(userAccount)) {
+            queryWrapper.eq("email", userAccount);
+        } else {
+            queryWrapper.eq("userAccount", userAccount);
+        }
         queryWrapper.eq("userPassword", encryptPassword);
         User user = this.baseMapper.selectOne(queryWrapper);
         // 用户不存在
@@ -119,6 +161,108 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户不存在或密码错误");
         }
         // 3. 生成登录 token，并将登录态存入 Redis
+        return doLogin(user);
+    }
+
+    @Override
+    public boolean sendCaptcha(String phone) {
+        // 校验手机号
+        ThrowUtils.throwIf(StringUtils.isBlank(phone) || !PHONE_PATTERN.matcher(phone).matches(),
+                ErrorCode.PARAMS_ERROR, "手机号格式错误");
+        // 生成 6 位随机验证码并存入 Redis（5 分钟有效）
+        String code = RandomUtil.randomNumbers(6);
+        stringRedisTemplate.opsForValue().set(USER_CAPTCHA_KEY + phone, code,
+                USER_CAPTCHA_EXPIRE_SECONDS, TimeUnit.SECONDS);
+        // 调用阿里云短信服务发送验证码
+        Map<String, String> params = new HashMap<>();
+        params.put("code", code);
+        SmsUtil.sendSms(phone, SmsEnum.SEND_CAPTCHA_CODE, params);
+        return true;
+    }
+
+    @Override
+    public boolean sendEmailCaptcha(String email) {
+        // 校验邮箱格式
+        ThrowUtils.throwIf(StringUtils.isBlank(email) || !Validator.isEmail(email),
+                ErrorCode.PARAMS_ERROR, "邮箱格式错误");
+        // 生成 6 位随机验证码并存入 Redis（5 分钟有效）
+        String code = RandomUtil.randomNumbers(6);
+        stringRedisTemplate.opsForValue().set(USER_EMAIL_CAPTCHA_KEY + email, code,
+                USER_CAPTCHA_EXPIRE_SECONDS, TimeUnit.SECONDS);
+        // 发送验证码邮件
+        mailUtil.sendCaptchaMail(email, code);
+        return true;
+    }
+
+    @Override
+    public LoginUserVO userSmsLogin(String phone, String code, HttpServletRequest request) {
+        // 1. 校验
+        ThrowUtils.throwIf(StringUtils.isBlank(phone) || !PHONE_PATTERN.matcher(phone).matches(),
+                ErrorCode.PARAMS_ERROR, "手机号格式错误");
+        ThrowUtils.throwIf(StringUtils.isBlank(code), ErrorCode.PARAMS_ERROR, "验证码为空");
+        // 2. 校验验证码（一次性使用，校验通过即删除）
+        String captchaKey = USER_CAPTCHA_KEY + phone;
+        String cachedCode = stringRedisTemplate.opsForValue().get(captchaKey);
+        ThrowUtils.throwIf(StringUtils.isBlank(cachedCode), ErrorCode.OPERATION_ERROR, "验证码已过期，请重新获取");
+        ThrowUtils.throwIf(!cachedCode.equals(code), ErrorCode.OPERATION_ERROR, "验证码错误");
+        stringRedisTemplate.delete(captchaKey);
+        // 3. 按手机号查询用户，不存在则自动注册
+        User user;
+        synchronized (phone.intern()) {
+            QueryWrapper<User> queryWrapper = new QueryWrapper<>();
+            queryWrapper.eq("phone", phone);
+            user = this.baseMapper.selectOne(queryWrapper);
+            if (user == null) {
+                user = new User();
+                user.setUserAccount(phone);
+//                user.setPhone(phone);
+                // 验证码登录用户未设置密码，随机生成一个
+                user.setUserPassword(DigestUtils.md5DigestAsHex((SALT + RandomUtil.randomString(16)).getBytes()));
+                boolean saveResult = this.save(user);
+                ThrowUtils.throwIf(!saveResult, ErrorCode.SYSTEM_ERROR, "注册失败，数据库错误");
+            }
+        }
+        // 4. 生成登录 token，并将登录态存入 Redis
+        return doLogin(user);
+    }
+
+    @Override
+    public boolean userResetPassword(String email, String captcha, String newPassword, String checkPassword) {
+        // 1. 校验
+        ThrowUtils.throwIf(StringUtils.isAnyBlank(email, captcha, newPassword, checkPassword),
+                ErrorCode.PARAMS_ERROR, "参数为空");
+        ThrowUtils.throwIf(!Validator.isEmail(email), ErrorCode.PARAMS_ERROR, "邮箱格式错误");
+        ThrowUtils.throwIf(newPassword.length() < 8 || checkPassword.length() < 8,
+                ErrorCode.PARAMS_ERROR, "新密码过短");
+        ThrowUtils.throwIf(!newPassword.equals(checkPassword), ErrorCode.PARAMS_ERROR, "两次输入的密码不一致");
+        // 2. 校验邮箱验证码（一次性使用，校验通过即删除）
+        String captchaKey = USER_EMAIL_CAPTCHA_KEY + email;
+        String cachedCode = stringRedisTemplate.opsForValue().get(captchaKey);
+        ThrowUtils.throwIf(StringUtils.isBlank(cachedCode), ErrorCode.OPERATION_ERROR, "验证码已过期，请重新获取");
+        ThrowUtils.throwIf(!cachedCode.equals(captcha), ErrorCode.OPERATION_ERROR, "验证码错误");
+        stringRedisTemplate.delete(captchaKey);
+        // 3. 查询邮箱对应的用户
+        QueryWrapper<User> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("email", email);
+        User user = this.baseMapper.selectOne(queryWrapper);
+        ThrowUtils.throwIf(user == null, ErrorCode.NOT_FOUND_ERROR, "该邮箱未注册");
+        // 4. 加密新密码并更新
+        String encryptPassword = DigestUtils.md5DigestAsHex((SALT + newPassword).getBytes());
+        User updateUser = new User();
+        updateUser.setId(user.getId());
+        updateUser.setUserPassword(encryptPassword);
+        boolean result = this.updateById(updateUser);
+        ThrowUtils.throwIf(!result, ErrorCode.SYSTEM_ERROR, "密码重置失败，数据库错误");
+        return true;
+    }
+
+    /**
+     * 登录成功后的公共处理：生成 token、写入 Redis、返回脱敏登录用户信息
+     *
+     * @param user 登录用户
+     * @return 脱敏后的用户信息（含 token）
+     */
+    private LoginUserVO doLogin(User user) {
         LoginUserVO loginUserVO = this.getLoginUserVO(user);
         String userRole = StringUtils.defaultIfBlank(user.getUserRole(), UserRoleEnum.USER.getValue());
         String token = JwtUtil.generateToken(user.getId(), userRole);

@@ -1,12 +1,14 @@
 package com.xoj.xojbackendcompetitionservice.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionQueryRequest;
 import com.yupi.yuojbackendmodel.model.entity.Competition;
 import com.yupi.yuojbackendmodel.model.entity.CompetitionQuestion;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionDetailVO;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionRankItemVO;
+import com.yupi.yuojbackendmodel.model.vo.CompetitionRankQuestionInfoVO;
 import com.yupi.yuojbackendmodel.model.vo.UserVO;
 
 import java.util.List;
@@ -59,6 +61,16 @@ public interface CompetitionService extends IService<Competition> {
     List<CompetitionRankItemVO> getRankList(Long competitionId);
 
     /**
+     * 分页查询竞赛排名（按通过数降序、罚时升序）
+     *
+     * @param competitionId 竞赛 id
+     * @param current       当前页
+     * @param pageSize      页大小
+     * @return 排名分页结果
+     */
+    Page<CompetitionRankItemVO> getRankPage(Long competitionId, long current, long pageSize);
+
+    /**
      * 查询用户在竞赛中各题的提交情况（0 未提交、1 提交未通过、2 通过）
      *
      * @param competitionId 竞赛 id
@@ -75,4 +87,12 @@ public interface CompetitionService extends IService<Competition> {
      * @return 用户 id -> 用户 VO（脱敏）
      */
     Map<Long, UserVO> getFirstAcceptedUserVOMap(List<CompetitionQuestion> relationList);
+
+    /**
+     * 查询竞赛排名页题目统计（题号、标题、提交数、通过数，按题号顺序）
+     *
+     * @param competitionId 竞赛 id
+     * @return 题目统计列表
+     */
+    List<CompetitionRankQuestionInfoVO> getRankQuestionInfoList(Long competitionId);
 }

@@ -43,6 +43,16 @@ public class QuestionSubmitQueryRequest extends PageRequest implements Serializa
     private Long userId;
 
     /**
+     * 用户 id 列表（按昵称查询时由服务端填充）
+     */
+    private List<Long> userIds;
+
+    /**
+     * 用户昵称（模糊查询，需先转为用户 id 列表）
+     */
+    private String userName;
+
+    /**
      * 是否只查询自己的
      */
     private Boolean onlyMine = false;

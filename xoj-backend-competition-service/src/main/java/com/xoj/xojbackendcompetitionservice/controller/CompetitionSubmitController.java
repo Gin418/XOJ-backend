@@ -13,11 +13,11 @@ import com.yupi.yuojbackendmodel.model.codesandbox.JudgeInfo;
 import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionSubmitInnerQueryRequest;
 import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionSubmitQueryRequest;
 import com.yupi.yuojbackendmodel.model.entity.CompetitionQuestion;
-import com.yupi.yuojbackendmodel.model.entity.Question;
 import com.yupi.yuojbackendmodel.model.entity.QuestionSubmit;
 import com.yupi.yuojbackendmodel.model.entity.User;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionSubmitVO;
 import com.yupi.yuojbackendmodel.model.vo.InnerQuestionSubmitPageVO;
+import com.yupi.yuojbackendmodel.model.vo.QuestionSimpleVO;
 import com.yupi.yuojbackendserviceclient.service.QuestionFeignClient;
 import com.yupi.yuojbackendserviceclient.service.UserFeignClient;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -114,14 +115,9 @@ public class CompetitionSubmitController {
         // 5）组装 VO：题号、题目标题、用户信息
         Map<Long, Integer> questionIdOrderMap = competitionQuestionService.listByCompetitionId(competitionId).stream()
                 .collect(Collectors.toMap(CompetitionQuestion::getQuestionId, CompetitionQuestion::getQuestionOrder, (o1, o2) -> o1));
-        Map<Long, String> questionTitleMap = new HashMap<>();
         Set<Long> questionIdSet = submitList.stream().map(QuestionSubmit::getQuestionId).collect(Collectors.toSet());
-        for (Long qid : questionIdSet) {
-            Question question = questionFeignClient.getQuestionById(qid);
-            if (question != null) {
-                questionTitleMap.put(qid, question.getTitle());
-            }
-        }
+        Map<Long, String> questionTitleMap = questionFeignClient.listQuestionSimpleByIds(new ArrayList<>(questionIdSet)).stream()
+                .collect(Collectors.toMap(QuestionSimpleVO::getId, QuestionSimpleVO::getTitle, (t1, t2) -> t1));
         Map<Long, User> userMap = new HashMap<>();
         Set<Long> userIdSet = submitList.stream().map(QuestionSubmit::getUserId).collect(Collectors.toSet());
         if (CollectionUtils.isNotEmpty(userIdSet)) {
@@ -141,11 +137,11 @@ public class CompetitionSubmitController {
             submitVO.setJudgeInfo(JSONUtil.toBean(submit.getJudgeInfo(), JudgeInfo.class));
             submitVO.setCodeSize(submit.getCodeSize());
             submitVO.setUserId(submit.getUserId());
-            User user = finalUserMap.get(submit.getUserId());
-            if (user != null) {
-                submitVO.setUserName(user.getUserName());
-                submitVO.setUserAvatar(user.getUserAvatar());
+            // 仅返回自己提交的代码，他人提交的代码置空
+            if (loginUserId != null && loginUserId > 0 && loginUserId.equals(submit.getUserId())) {
+                submitVO.setCode(submit.getCode());
             }
+            submitVO.setUserVO(userFeignClient.getUserVO(finalUserMap.get(submit.getUserId())));
             submitVO.setCreateTime(submit.getCreateTime());
             return submitVO;
         }).collect(Collectors.toList());

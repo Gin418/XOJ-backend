@@ -7,6 +7,7 @@ import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionSubmitInnerQue
 import com.yupi.yuojbackendmodel.model.entity.Question;
 import com.yupi.yuojbackendmodel.model.entity.QuestionSubmit;
 import com.yupi.yuojbackendmodel.model.vo.InnerQuestionSubmitPageVO;
+import com.yupi.yuojbackendmodel.model.vo.QuestionSimpleVO;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,6 +26,12 @@ public interface QuestionFeignClient {
 
     @GetMapping("/get/id")
     Question getQuestionById(@RequestParam("questionId") long questionId);
+
+    /**
+     * 按题目 id 列表批量查询题目简信息（题目 id、题号、标题，按传入顺序返回）
+     */
+    @PostMapping("/question/simple/list")
+    List<QuestionSimpleVO> listQuestionSimpleByIds(@RequestBody List<Long> questionIds);
 
     @GetMapping("/question_submit/get/id")
     QuestionSubmit getQuestionSubmitById(@RequestParam("questionId") long questionSubmitId);
@@ -52,5 +59,11 @@ public interface QuestionFeignClient {
      */
     @GetMapping("/question_submit/competition/list")
     List<QuestionSubmit> listCompetitionSubmitsAll(@RequestParam("competitionId") long competitionId);
+
+    /**
+     * 查询竞赛中指定用户列表的全部提交记录（按提交时间升序）
+     */
+    @PostMapping("/question_submit/competition/list/byUserIds")
+    List<QuestionSubmit> listCompetitionSubmitsByUserIds(@RequestBody CompetitionSubmitInnerQueryRequest request);
 
 }

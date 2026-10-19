@@ -54,10 +54,12 @@ public class UserController {
         String userAccount = userRegisterRequest.getUserAccount();
         String userPassword = userRegisterRequest.getUserPassword();
         String checkPassword = userRegisterRequest.getCheckPassword();
-        if (StringUtils.isAnyBlank(userAccount, userPassword, checkPassword)) {
-            return null;
+        String email = userRegisterRequest.getEmail();
+        String captcha = userRegisterRequest.getCaptcha();
+        if (StringUtils.isAnyBlank(userAccount, userPassword, checkPassword, email, captcha)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        long result = userService.userRegister(userAccount, userPassword, checkPassword);
+        long result = userService.userRegister(userAccount, userPassword, checkPassword, email, captcha);
         return ResultUtils.success(result);
     }
 
@@ -80,6 +82,88 @@ public class UserController {
         }
         LoginUserVO loginUserVO = userService.userLogin(userAccount, userPassword, request);
         return ResultUtils.success(loginUserVO);
+    }
+
+    /**
+     * 发送短信验证码
+     *
+     * @param smsCaptchaSendRequest
+     * @return
+     */
+    @PostMapping("/captcha/send")
+    public BaseResponse<Boolean> sendCaptcha(@RequestBody SmsCaptchaSendRequest smsCaptchaSendRequest) {
+        if (smsCaptchaSendRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        String phone = smsCaptchaSendRequest.getPhone();
+        if (StringUtils.isBlank(phone)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        boolean result = userService.sendCaptcha(phone);
+        return ResultUtils.success(result);
+    }
+
+    /**
+     * 发送邮箱验证码
+     *
+     * @param emailCaptchaSendRequest
+     * @return
+     */
+    @PostMapping("/captcha/send/email")
+    public BaseResponse<Boolean> sendEmailCaptcha(@RequestBody EmailCaptchaSendRequest emailCaptchaSendRequest) {
+        if (emailCaptchaSendRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        String email = emailCaptchaSendRequest.getEmail();
+        if (StringUtils.isBlank(email)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        boolean result = userService.sendEmailCaptcha(email);
+        return ResultUtils.success(result);
+    }
+
+    /**
+     * 验证码登录
+     *
+     * @param userSmsLoginRequest
+     * @param request
+     * @return
+     */
+    @PostMapping("/login/sms")
+    public BaseResponse<LoginUserVO> userSmsLogin(@RequestBody UserSmsLoginRequest userSmsLoginRequest,
+                                                  HttpServletRequest request) {
+        if (userSmsLoginRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        String phone = userSmsLoginRequest.getPhone();
+        String code = userSmsLoginRequest.getCode();
+        if (StringUtils.isAnyBlank(phone, code)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        LoginUserVO loginUserVO = userService.userSmsLogin(phone, code, request);
+        return ResultUtils.success(loginUserVO);
+    }
+
+    /**
+     * 通过邮箱找回密码
+     *
+     * @param userResetPasswordRequest
+     * @return
+     */
+    @PostMapping("/reset/password")
+    public BaseResponse<Boolean> userResetPassword(@RequestBody UserResetPasswordRequest userResetPasswordRequest) {
+        if (userResetPasswordRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        String email = userResetPasswordRequest.getEmail();
+        String captcha = userResetPasswordRequest.getCaptcha();
+        String newPassword = userResetPasswordRequest.getNewPassword();
+        String checkPassword = userResetPasswordRequest.getCheckPassword();
+        if (StringUtils.isAnyBlank(email, captcha, newPassword, checkPassword)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        boolean result = userService.userResetPassword(email, captcha, newPassword, checkPassword);
+        return ResultUtils.success(result);
     }
 
     /**
@@ -161,7 +245,7 @@ public class UserController {
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<Boolean> updateUser(@RequestBody UserUpdateRequest userUpdateRequest,
             HttpServletRequest request) {
-        if (userUpdateRequest == null || userUpdateRequest.getId() == null) {
+        if (userUpdateRequest == null || userUpdateRequest.getId() == null || StringUtils.isBlank(userUpdateRequest.getUserName())) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         User user = new User();
@@ -258,7 +342,7 @@ public class UserController {
     @PostMapping("/update/my")
     public BaseResponse<Boolean> updateMyUser(@RequestBody UserUpdateMyRequest userUpdateMyRequest,
             HttpServletRequest request) {
-        if (userUpdateMyRequest == null) {
+        if (userUpdateMyRequest == null || StringUtils.isBlank(userUpdateMyRequest.getUserName())) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         User loginUser = userService.getLoginUser(request);

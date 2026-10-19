@@ -29,16 +29,16 @@ import java.util.UUID;
 @Component
 public class OSSUtil {
 
-    @Value("${oss.access-key-id}")
+    @Value("${aliyun.access-key-id}")
     private String accessKeyId;
 
-    @Value("${oss.access-key-secret}")
+    @Value("${aliyun.access-key-secret}")
     private String accessKeySecret;
 
-    @Value("${oss.endpoint}")
+    @Value("${aliyun.oss-endpoint}")
     private String endpoint;
 
-    @Value("${oss.region}")
+    @Value("${aliyun.oss-region}")
     private String region;
 
     private static OSS ossClient;

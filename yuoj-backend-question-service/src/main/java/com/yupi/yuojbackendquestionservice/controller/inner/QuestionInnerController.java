@@ -10,6 +10,7 @@ import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionSubmitInnerQue
 import com.yupi.yuojbackendmodel.model.entity.Question;
 import com.yupi.yuojbackendmodel.model.entity.QuestionSubmit;
 import com.yupi.yuojbackendmodel.model.vo.InnerQuestionSubmitPageVO;
+import com.yupi.yuojbackendmodel.model.vo.QuestionSimpleVO;
 import com.yupi.yuojbackendquestionservice.service.FileService;
 import com.yupi.yuojbackendquestionservice.service.QuestionService;
 import com.yupi.yuojbackendquestionservice.service.QuestionSubmitService;
@@ -20,6 +21,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -42,6 +44,12 @@ public class QuestionInnerController implements QuestionFeignClient {
     @Override
     public Question getQuestionById(@RequestParam("questionId") long questionId) {
         return questionService.getById(questionId);
+    }
+
+    @PostMapping("/question/simple/list")
+    @Override
+    public List<QuestionSimpleVO> listQuestionSimpleByIds(@RequestBody List<Long> questionIds) {
+        return questionService.listSimpleByIds(questionIds);
     }
 
     @GetMapping("/question_submit/get/id")
@@ -108,6 +116,24 @@ public class QuestionInnerController implements QuestionFeignClient {
     public List<QuestionSubmit> listCompetitionSubmitsAll(@RequestParam("competitionId") long competitionId) {
         return questionSubmitService.lambdaQuery()
                 .eq(QuestionSubmit::getCompetitionId, competitionId)
+                .select(QuestionSubmit::getId, QuestionSubmit::getQuestionId, QuestionSubmit::getUserId,
+                        QuestionSubmit::getStatus, QuestionSubmit::getCreateTime)
+                .orderByAsc(QuestionSubmit::getCreateTime)
+                .list();
+    }
+
+    /**
+     * 查询竞赛中指定用户列表的全部提交记录（按提交时间升序，仅查排名所需字段）
+     */
+    @PostMapping("/question_submit/competition/list/byUserIds")
+    @Override
+    public List<QuestionSubmit> listCompetitionSubmitsByUserIds(@RequestBody CompetitionSubmitInnerQueryRequest request) {
+        if (CollectionUtils.isEmpty(request.getUserIds())) {
+            return Collections.emptyList();
+        }
+        return questionSubmitService.lambdaQuery()
+                .eq(QuestionSubmit::getCompetitionId, request.getCompetitionId())
+                .in(QuestionSubmit::getUserId, request.getUserIds())
                 .select(QuestionSubmit::getId, QuestionSubmit::getQuestionId, QuestionSubmit::getUserId,
                         QuestionSubmit::getStatus, QuestionSubmit::getCreateTime)
                 .orderByAsc(QuestionSubmit::getCreateTime)

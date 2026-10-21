@@ -47,13 +47,23 @@ public class GlobalAuthFilter implements GlobalFilter, Ordered {
             "/api/user/file/upload",
             // 题目服务：公开查询接口
             "/api/question/get/vo",
+            "/api/question/daily",
+            "/api/question/daily/rank",
             "/api/question/list/page/vo",
             "/api/question/simple/list",
             "/api/question/question_submit/list/page",
+            "/api/question/question_submit/recent/stats",
             "/api/question/count/**",
             "/api/question/stats/**",
             "/api/question/language/select",
             "/api/question/file/upload",
+            // 帖子服务：公开查询接口
+            "/api/question/post/get/vo",
+            "/api/question/post/list/page/vo",
+            "/api/question/post/search/page/vo",
+            "/api/question/post_favour/list/page",
+            // 竞赛服务：本周统计（公开）
+            "/api/competition/week/stats",
             // 竞赛服务
             "/api/competition/page",
             // 接口文档

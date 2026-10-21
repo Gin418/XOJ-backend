@@ -8,6 +8,8 @@ import com.yupi.yuojbackendmodel.model.dto.questionsubmit.QuestionSubmitAddReque
 import com.yupi.yuojbackendmodel.model.dto.questionsubmit.QuestionSubmitQueryRequest;
 import com.yupi.yuojbackendmodel.model.entity.Question;
 import com.yupi.yuojbackendmodel.model.entity.QuestionSubmit;
+import com.yupi.yuojbackendmodel.model.vo.DailyQuestionRankItemVO;
+import com.yupi.yuojbackendmodel.model.vo.DailySubmitStatsVO;
 import com.yupi.yuojbackendmodel.model.vo.MySubmitStatsVO;
 import com.yupi.yuojbackendmodel.model.vo.QuestionSubmitCountVo;
 import com.yupi.yuojbackendmodel.model.vo.QuestionSubmitVO;
@@ -86,4 +88,21 @@ public interface QuestionSubmitService extends IService<QuestionSubmit> {
      * @return
      */
     MySubmitStatsVO getMySubmitStats(long userId);
+
+    /**
+     * 获取最近 N 天的每日提交次数和 AC 次数（含今天，无提交的日期补 0）
+     *
+     * @param userId
+     * @param days 统计天数（含今天）
+     * @return 按日期升序的每日统计列表
+     */
+    List<DailySubmitStatsVO> getRecentDailySubmitStats(long userId, int days);
+
+    /**
+     * 获取每日一题解题榜（当天在每日一题上首次通过时间最早的前 N 名）
+     *
+     * @param limit 榜单人数
+     * @return 按通过时间升序的榜单列表
+     */
+    List<DailyQuestionRankItemVO> getDailyQuestionRank(int limit);
 }

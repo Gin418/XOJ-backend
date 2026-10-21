@@ -119,6 +119,9 @@ create table if not exists competition
     description      text                               null comment '描述',
     startTime        varchar(52)                        null comment '开始时间',
     endTime          varchar(52)                        null comment '结束时间',
+    freezeTime       varchar(52)                        null comment '封榜时间（封榜后排名不再更新）',
+    allowSubmitAfterEnd tinyint  default 0             not null comment '是否允许赛后提交（0 不允许、1 允许）',
+    isRevealed       tinyint  default 0                 not null comment '是否揭榜（0 未揭榜、1 已揭榜）',
     questionIds      varchar(1024)                      null comment '题目 id 列表（英文逗号分隔）',
     status           varchar(52)  default ''            not null comment '状态',
     userId           bigint                             null comment '创建用户 id',
@@ -138,7 +141,7 @@ create table if not exists user_competition
     updateTime    datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
     index idx_competitionId (competitionId),
     index idx_userId (userId),
-    unique key uk_user_competition (userId, competitionId)
+    unique key uk_user_competition (usenerId, competitionId)
 ) comment '用户竞赛关系' collate = utf8mb4_unicode_ci;
 
 -- 竞赛题目关系表（竞赛包含哪些题目，硬删除）
@@ -166,4 +169,16 @@ alter table user
 -- 存量库升级：用户表新增邮箱字段
 alter table user
     add column email varchar(256) null comment '邮箱' after phone;
+
+-- 存量库升级：竞赛表新增封榜时间字段
+alter table competition
+    add column freezeTime varchar(52) null comment '封榜时间（封榜后排名不再更新）' after endTime;
+
+-- 存量库升级：竞赛表新增是否允许赛后提交字段
+alter table competition
+    add column allowSubmitAfterEnd tinyint default 0 not null comment '是否允许赛后提交（0 不允许、1 允许）' after freezeTime;
+
+-- 存量库升级：竞赛表新增是否揭榜字段
+alter table competition
+    add column isRevealed tinyint default 0 not null comment '是否揭榜（0 未揭榜、1 已揭榜）' after allowSubmitAfterEnd;
 

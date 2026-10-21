@@ -1,7 +1,9 @@
 package com.xoj.xojbackendcompetitionservice.service;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.yupi.yuojbackendmodel.model.entity.UserCompetition;
+import com.yupi.yuojbackendmodel.model.vo.CompetitionVO;
 
 public interface UserCompetitionService extends IService<UserCompetition> {
 
@@ -22,4 +24,14 @@ public interface UserCompetitionService extends IService<UserCompetition> {
      * @return 是否已参加
      */
     boolean hasJoined(Long competitionId, Long userId);
+
+    /**
+     * 分页查询当前用户参加的竞赛列表（按参加时间倒序）
+     *
+     * @param userId   用户 id
+     * @param current  当前页
+     * @param pageSize 每页条数
+     * @return 竞赛 VO 分页
+     */
+    Page<CompetitionVO> listMyCompetitionsPage(Long userId, long current, long pageSize);
 }

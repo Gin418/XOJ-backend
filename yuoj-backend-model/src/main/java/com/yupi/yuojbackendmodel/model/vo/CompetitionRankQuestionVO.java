@@ -26,6 +26,21 @@ public class CompetitionRankQuestionVO implements Serializable {
     private Long acceptTimeSeconds;
 
     /**
+     * 冻结提交次数
+     */
+    private Integer frozenSubmitCount;
+
+    /**
+     * 赛后通过用时（秒）：赛后首次通过时间 - 比赛开始时间，赛后未通过为 -1
+     */
+    private Long postContestAcceptSeconds;
+
+    /**
+     * 赛后是否通过
+     */
+    private Boolean postContestAccepted;
+
+    /**
      * 是否一血（第一个通过）
      */
     private Boolean firstBlood;

@@ -21,6 +21,8 @@ import com.yupi.yuojbackendmodel.model.entity.QuestionSubmit;
 import com.yupi.yuojbackendmodel.model.entity.User;
 import com.yupi.yuojbackendmodel.model.enums.EnumVo;
 import com.yupi.yuojbackendmodel.model.enums.QuestionSubmitLanguageEnum;
+import com.yupi.yuojbackendmodel.model.vo.DailyQuestionRankItemVO;
+import com.yupi.yuojbackendmodel.model.vo.DailySubmitStatsVO;
 import com.yupi.yuojbackendmodel.model.vo.MySubmitStatsVO;
 import com.yupi.yuojbackendmodel.model.vo.QuestionSimpleVO;
 import com.yupi.yuojbackendmodel.model.vo.QuestionSubmitCountVo;
@@ -67,6 +69,11 @@ public class QuestionController {
     private UserFeignClient userFeignClient;
 
     private final static Gson GSON = new Gson();
+
+    /**
+     * 最近提交统计的最大天数
+     */
+    private static final int MAX_RECENT_STATS_DAYS = 365;
 
     // region 增删改查
 
@@ -219,6 +226,30 @@ public class QuestionController {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
         return ResultUtils.success(questionService.getQuestionVO(question, request));
+    }
+
+    /**
+     * 获取每日一题（以当天日期为随机种子，同一天内题目固定，次日自动更换）
+     *
+     * @param request
+     * @return
+     */
+    @GetMapping("/daily")
+    public BaseResponse<QuestionVO> getDailyQuestion(HttpServletRequest request) {
+        Question dailyQuestion = questionService.getDailyQuestion();
+        return ResultUtils.success(questionService.getQuestionVO(dailyQuestion, request));
+    }
+
+    /**
+     * 获取每日一题解题榜（当天在每日一题上首次通过时间最早的前 N 名）
+     *
+     * @param limit 榜单人数，默认 10，最大 10
+     * @return
+     */
+    @GetMapping("/daily/rank")
+    public BaseResponse<List<DailyQuestionRankItemVO>> getDailyQuestionRank(@RequestParam(defaultValue = "10") int limit) {
+        ThrowUtils.throwIf(limit < 1 || limit > 10, ErrorCode.PARAMS_ERROR, "榜单人数需在 1~10 之间");
+        return ResultUtils.success(questionSubmitService.getDailyQuestionRank(limit));
     }
 
     /**
@@ -411,6 +442,22 @@ public class QuestionController {
     @GetMapping("/question_submit/my/stats")
     public BaseResponse<MySubmitStatsVO> getMySubmitStats(HttpServletRequest request) {
         return ResultUtils.success(questionSubmitService.getMySubmitStats(GatewayHeaderUtil.getUserId()));
+    }
+
+    @GetMapping("/question_submit/recent/stats")
+    public BaseResponse<List<DailySubmitStatsVO>> getRecentDailySubmitStats(@RequestParam(defaultValue = "7") int days,
+                                                                            @RequestParam(required = false) Long userId) {
+        // 统计天数限制在 1 ~ 365 天
+        ThrowUtils.throwIf(days < 1 || days > MAX_RECENT_STATS_DAYS, ErrorCode.PARAMS_ERROR,
+                "统计天数需在 1~" + MAX_RECENT_STATS_DAYS + " 之间");
+        // 未指定用户时统计当前登录用户，未登录抛异常；指定用户时校验参数合法性
+        if (userId == null) {
+            userId = GatewayHeaderUtil.getUserId();
+            ThrowUtils.throwIf(userId <= 0, ErrorCode.NOT_LOGIN_ERROR);
+        } else {
+            ThrowUtils.throwIf(userId <= 0, ErrorCode.PARAMS_ERROR, "用户 id 不合法");
+        }
+        return ResultUtils.success(questionSubmitService.getRecentDailySubmitStats(userId, days));
     }
 
     @GetMapping("/count/{id}")

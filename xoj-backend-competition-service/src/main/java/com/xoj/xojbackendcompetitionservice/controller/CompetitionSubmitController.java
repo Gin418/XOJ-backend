@@ -1,8 +1,10 @@
 package com.xoj.xojbackendcompetitionservice.controller;
 
+import cn.hutool.core.date.DateUtil;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xoj.xojbackendcompetitionservice.service.CompetitionQuestionService;
+import com.xoj.xojbackendcompetitionservice.service.CompetitionService;
 import com.yupi.yuojbackendcommon.common.BaseResponse;
 import com.yupi.yuojbackendcommon.common.ErrorCode;
 import com.yupi.yuojbackendcommon.common.ResultUtils;
@@ -12,9 +14,12 @@ import com.yupi.yuojbackendcommon.utils.GatewayHeaderUtil;
 import com.yupi.yuojbackendmodel.model.codesandbox.JudgeInfo;
 import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionSubmitInnerQueryRequest;
 import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionSubmitQueryRequest;
+import com.yupi.yuojbackendmodel.model.entity.Competition;
 import com.yupi.yuojbackendmodel.model.entity.CompetitionQuestion;
 import com.yupi.yuojbackendmodel.model.entity.QuestionSubmit;
 import com.yupi.yuojbackendmodel.model.entity.User;
+import com.yupi.yuojbackendmodel.model.enums.JudgeInfoMessageEnum;
+import com.yupi.yuojbackendmodel.model.enums.QuestionSubmitLanguageEnum;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionSubmitVO;
 import com.yupi.yuojbackendmodel.model.vo.InnerQuestionSubmitPageVO;
 import com.yupi.yuojbackendmodel.model.vo.QuestionSimpleVO;
@@ -31,6 +36,7 @@ import org.springframework.web.bind.annotation.RestController;
 import javax.annotation.Resource;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +53,9 @@ public class CompetitionSubmitController {
 
     @Resource
     private CompetitionQuestionService competitionQuestionService;
+
+    @Resource
+    private CompetitionService competitionService;
 
     @Resource
     private QuestionFeignClient questionFeignClient;
@@ -99,7 +108,9 @@ public class CompetitionSubmitController {
         CompetitionSubmitInnerQueryRequest innerRequest = new CompetitionSubmitInnerQueryRequest();
         innerRequest.setCompetitionId(competitionId);
         innerRequest.setQuestionId(questionId);
-        innerRequest.setLanguage(request.getLanguage());
+        if (request.getLanguageId() != null) {
+            innerRequest.setLanguage(QuestionSubmitLanguageEnum.getEnumByValue(request.getLanguageId()).getLanguageTitle());
+        }
         innerRequest.setStatus(request.getStatus());
         innerRequest.setUserIds(userIds);
         innerRequest.setCurrent(current);
@@ -112,7 +123,12 @@ public class CompetitionSubmitController {
             return ResultUtils.success(new Page<>(current, pageSize, 0));
         }
 
-        // 5）组装 VO：题号、题目标题、用户信息
+        // 5）竞赛封榜时间：封榜时间之后提交的测评结果对外统一显示为未知
+        Competition competition = competitionService.getById(competitionId);
+        Date freezeTime = competition != null && StringUtils.isNotBlank(competition.getFreezeTime())
+                ? DateUtil.parse(competition.getFreezeTime()) : null;
+
+        // 6）组装 VO：题号、题目标题、用户信息
         Map<Long, Integer> questionIdOrderMap = competitionQuestionService.listByCompetitionId(competitionId).stream()
                 .collect(Collectors.toMap(CompetitionQuestion::getQuestionId, CompetitionQuestion::getQuestionOrder, (o1, o2) -> o1));
         Set<Long> questionIdSet = submitList.stream().map(QuestionSubmit::getQuestionId).collect(Collectors.toSet());
@@ -133,12 +149,22 @@ public class CompetitionSubmitController {
             submitVO.setCustomId(competitionQuestionService.convertToQuestionNo(questionIdOrderMap.get(submit.getQuestionId())));
             submitVO.setQuestionTitle(questionTitleMap.get(submit.getQuestionId()));
             submitVO.setLanguage(submit.getLanguage());
-            submitVO.setStatus(submit.getStatus());
-            submitVO.setJudgeInfo(JSONUtil.toBean(submit.getJudgeInfo(), JudgeInfo.class));
+            // 未揭榜时，封榜时间之后的提交隐藏真实测评结果，统一显示为未知；自己的提交正常显示
+            boolean isOwnSubmit = loginUserId != null && loginUserId > 0 && loginUserId.equals(submit.getUserId());
+            boolean notRevealed = competition == null || !Integer.valueOf(1).equals(competition.getIsRevealed());
+            boolean frozenSubmit = notRevealed && freezeTime != null && submit.getCreateTime() != null
+                    && submit.getCreateTime().after(freezeTime);
+            if (frozenSubmit && !isOwnSubmit) {
+                submitVO.setStatus(JudgeInfoMessageEnum.UNKNOWN.getValue());
+                submitVO.setJudgeInfo(null);
+            } else {
+                submitVO.setStatus(submit.getStatus());
+                submitVO.setJudgeInfo(JSONUtil.toBean(submit.getJudgeInfo(), JudgeInfo.class));
+            }
             submitVO.setCodeSize(submit.getCodeSize());
             submitVO.setUserId(submit.getUserId());
             // 仅返回自己提交的代码，他人提交的代码置空
-            if (loginUserId != null && loginUserId > 0 && loginUserId.equals(submit.getUserId())) {
+            if (isOwnSubmit) {
                 submitVO.setCode(submit.getCode());
             }
             submitVO.setUserVO(userFeignClient.getUserVO(finalUserMap.get(submit.getUserId())));

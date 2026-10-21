@@ -7,8 +7,8 @@ import com.xoj.xojbackendcompetitionservice.service.CompetitionService;
 import com.xoj.xojbackendcompetitionservice.service.UserCompetitionService;
 import com.yupi.yuojbackendcommon.common.BaseResponse;
 import com.yupi.yuojbackendcommon.common.ErrorCode;
-import com.yupi.yuojbackendcommon.common.PageRequest;
 import com.yupi.yuojbackendcommon.common.ResultUtils;
+import com.yupi.yuojbackendcommon.constant.GatewayConsts;
 import com.yupi.yuojbackendcommon.constant.UserConstant;
 import com.yupi.yuojbackendcommon.exception.BusinessException;
 import com.yupi.yuojbackendcommon.exception.ThrowUtils;
@@ -16,6 +16,8 @@ import com.yupi.yuojbackendcommon.utils.GatewayHeaderUtil;
 import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionAddRequest;
 import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionJoinRequest;
 import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionQueryRequest;
+import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionRankQueryRequest;
+import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionSwitchUpdateRequest;
 import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionUpdateRequest;
 import com.yupi.yuojbackendmodel.model.entity.Competition;
 import com.yupi.yuojbackendmodel.model.entity.CompetitionQuestion;
@@ -28,6 +30,7 @@ import com.yupi.yuojbackendmodel.model.vo.CompetitionQuestionVO;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionRankItemVO;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionRankQuestionInfoVO;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionVO;
+import com.yupi.yuojbackendmodel.model.vo.CompetitionWeekStatsVO;
 import com.yupi.yuojbackendmodel.model.vo.QuestionVO;
 import com.yupi.yuojbackendmodel.model.vo.UserVO;
 import com.yupi.yuojbackendserviceclient.service.QuestionFeignClient;
@@ -38,6 +41,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
@@ -100,6 +104,29 @@ public class CompetitionController {
         return ResultUtils.success(userCompetitionService.hasJoined(competitionId, userId));
     }
 
+    /**
+     * 查询本周竞赛统计（总数、未开始、进行中）
+     */
+    @GetMapping("/week/stats")
+    public BaseResponse<CompetitionWeekStatsVO> getWeekStats() {
+        log.info("getWeekStats request");
+        return ResultUtils.success(competitionService.getWeekStats());
+    }
+
+    /**
+     * 分页查询当前用户参加的竞赛列表（按参加时间倒序）
+     */
+    @GetMapping("/my/list")
+    public BaseResponse<Page<CompetitionVO>> listMyCompetitions(@RequestParam(defaultValue = "1") long current,
+                                                                @RequestParam(defaultValue = "10") long pageSize) {
+        Long userId = GatewayHeaderUtil.getUserId();
+        ThrowUtils.throwIf(userId == null || userId <= 0
+                        || GatewayConsts.NOT_LOGIN_USER_ID == userId,
+                ErrorCode.NOT_LOGIN_ERROR);
+        log.info("listMyCompetitions request, userId = {}, current = {}, pageSize = {}", userId, current, pageSize);
+        return ResultUtils.success(userCompetitionService.listMyCompetitionsPage(userId, current, pageSize));
+    }
+
     @PostMapping("/add")
     public BaseResponse<Long> addCompetition(@RequestBody CompetitionAddRequest competitionAddRequest) {
         if (competitionAddRequest == null) {
@@ -108,6 +135,8 @@ public class CompetitionController {
         log.info("addCompetition request: {}", competitionAddRequest);
         Competition competition = new Competition();
         BeanUtil.copyProperties(competitionAddRequest, competition);
+        competition.setIsRevealed(0);
+        competition.setAllowSubmitAfterEnd(0);
         competition.setUserId(GatewayHeaderUtil.getUserId());
         Long id = competitionService.addCompetition(competition, competitionAddRequest.getQuestionIds());
         return ResultUtils.success(id);
@@ -121,7 +150,24 @@ public class CompetitionController {
         log.info("updateCompetition request: {}", updateRequest);
         Competition competition = new Competition();
         BeanUtil.copyProperties(updateRequest, competition);
+        competition.setIsRevealed(0);
+        competition.setAllowSubmitAfterEnd(0);
         boolean bool = competitionService.updateCompetition(competition, updateRequest.getQuestionIds());
+        return ResultUtils.success(bool);
+    }
+
+    /**
+     * 修改竞赛开关（是否允许赛后提交、是否揭榜）
+     *
+     * @param updateRequest 更新请求
+     */
+    @PostMapping("/update/switch")
+    public BaseResponse<Boolean> updateCompetitionSwitch(@RequestBody CompetitionSwitchUpdateRequest updateRequest) {
+        if (updateRequest == null || updateRequest.getId() == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        log.info("updateCompetitionSwitch request: {}", updateRequest);
+        boolean bool = competitionService.updateCompetitionSwitch(updateRequest);
         return ResultUtils.success(bool);
     }
 
@@ -268,14 +314,15 @@ public class CompetitionController {
      */
     @PostMapping("/rank/{competitionId}")
     public BaseResponse<Page<CompetitionRankItemVO>> getCompetitionRank(@PathVariable Long competitionId,
-                                                                        @RequestBody PageRequest pageRequest) {
-        if (competitionId == null || pageRequest == null) {
+                                                                        @RequestBody CompetitionRankQueryRequest rankQueryRequest) {
+        if (competitionId == null || rankQueryRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        log.info("getCompetitionRank request, competitionId = {}, current = {}, pageSize = {}",
-                competitionId, pageRequest.getCurrent(), pageRequest.getPageSize());
+        boolean realTime = Boolean.TRUE.equals(rankQueryRequest.getRealTime());
+        log.info("getCompetitionRank request, competitionId = {}, current = {}, pageSize = {}, realTime = {}",
+                competitionId, rankQueryRequest.getCurrent(), rankQueryRequest.getPageSize(), realTime);
         return ResultUtils.success(competitionService.getRankPage(
-                competitionId, pageRequest.getCurrent(), pageRequest.getPageSize()));
+                competitionId, rankQueryRequest.getCurrent(), rankQueryRequest.getPageSize(), realTime));
     }
 
     @PostMapping("/page")

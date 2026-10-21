@@ -2,6 +2,7 @@ package com.xoj.xojbackendcompetitionservice.service.impl;
 
 import cn.hutool.core.date.DateUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.xoj.xojbackendcompetitionservice.mapper.UserCompetitionMapper;
 import com.xoj.xojbackendcompetitionservice.service.CompetitionService;
@@ -10,11 +11,17 @@ import com.yupi.yuojbackendcommon.common.ErrorCode;
 import com.yupi.yuojbackendcommon.exception.ThrowUtils;
 import com.yupi.yuojbackendmodel.model.entity.Competition;
 import com.yupi.yuojbackendmodel.model.entity.UserCompetition;
+import com.yupi.yuojbackendmodel.model.vo.CompetitionVO;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Service
 public class UserCompetitionServiceImpl extends ServiceImpl<UserCompetitionMapper, UserCompetition> implements UserCompetitionService {
@@ -49,5 +56,32 @@ public class UserCompetitionServiceImpl extends ServiceImpl<UserCompetitionMappe
         queryWrapper.eq("competitionId", competitionId);
         queryWrapper.eq("userId", userId);
         return this.count(queryWrapper) > 0;
+    }
+
+    @Override
+    public Page<CompetitionVO> listMyCompetitionsPage(Long userId, long current, long pageSize) {
+        // 分页查询用户参加的竞赛关系（按参加时间倒序）
+        QueryWrapper<UserCompetition> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("userId", userId);
+        queryWrapper.orderByDesc("createTime");
+        Page<UserCompetition> relationPage = this.page(new Page<>(current, pageSize), queryWrapper);
+        List<UserCompetition> relationList = relationPage.getRecords();
+        Page<CompetitionVO> competitionVOPage = new Page<>(relationPage.getCurrent(), relationPage.getSize(), relationPage.getTotal());
+        if (CollectionUtils.isEmpty(relationList)) {
+            return competitionVOPage;
+        }
+        // 批量查询竞赛信息，避免 N+1
+        List<Long> competitionIds = relationList.stream()
+                .map(UserCompetition::getCompetitionId)
+                .collect(Collectors.toList());
+        Map<Long, Competition> competitionMap = competitionService.listByIds(competitionIds).stream()
+                .collect(Collectors.toMap(Competition::getId, competition -> competition, (a, b) -> a));
+        // 按参加时间倒序组装 VO
+        List<CompetitionVO> competitionVOList = relationList.stream()
+                .map(relation -> CompetitionVO.objToVo(competitionMap.get(relation.getCompetitionId())))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        competitionVOPage.setRecords(competitionVOList);
+        return competitionVOPage;
     }
 }

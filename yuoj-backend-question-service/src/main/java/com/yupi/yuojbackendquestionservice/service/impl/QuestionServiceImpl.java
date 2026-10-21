@@ -25,14 +25,19 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Random;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -45,6 +50,10 @@ import java.util.stream.Collectors;
 public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question>
     implements QuestionService {
 
+    /**
+     * 每日一题 Redis key 前缀（key 格式：question:daily:{yyyy-MM-dd}）
+     */
+    private static final String DAILY_QUESTION_KEY_PREFIX = "question:daily:";
 
     @Resource
     private UserFeignClient userFeignClient;
@@ -52,6 +61,9 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question>
     @Resource
     @Lazy
     private QuestionSubmitService questionSubmitService;
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
 
     /**
      * 校验题目是否合法
@@ -226,6 +238,43 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question>
         UpdateWrapper<Question> updateWrapper = new UpdateWrapper<>();
         updateWrapper.eq("id", questionId).setSql("acceptedNum = acceptedNum + 1");
         return this.update(updateWrapper);
+    }
+
+    @Override
+    public Question getDailyQuestion() {
+        String today = LocalDate.now().toString();
+        String redisKey = DAILY_QUESTION_KEY_PREFIX + today;
+        // 优先从 Redis 读取当天已选定的题目 id
+        String cachedQuestionId = stringRedisTemplate.opsForValue().get(redisKey);
+        if (StringUtils.isNotBlank(cachedQuestionId)) {
+            Question cachedQuestion = this.getById(Long.valueOf(cachedQuestionId));
+            if (cachedQuestion != null) {
+                return cachedQuestion;
+            }
+            // 缓存的题目已不存在（如被删除），删除缓存后重新随机
+            stringRedisTemplate.delete(redisKey);
+        }
+        // 查询所有未删除题目的 id（按 id 升序，保证列表稳定）
+        List<Long> questionIds = this.lambdaQuery()
+                .select(Question::getId)
+                .orderByAsc(Question::getId)
+                .list().stream()
+                .map(Question::getId)
+                .collect(Collectors.toList());
+        if (CollectionUtils.isEmpty(questionIds)) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "题库为空");
+        }
+        // 以当天日期为随机种子：同一天所有用户看到同一题，次日自动更换
+        long seed = LocalDate.now().toEpochDay();
+        int index = new Random(seed).nextInt(questionIds.size());
+        Question dailyQuestion = this.getById(questionIds.get(index));
+        // 写入 Redis 缓存，当天有效（次日零点过期）
+        if (dailyQuestion != null) {
+            Duration expireDuration = Duration.between(
+                    LocalDateTime.now(), LocalDate.now().plusDays(1).atStartOfDay());
+            stringRedisTemplate.opsForValue().set(redisKey, String.valueOf(dailyQuestion.getId()), expireDuration);
+        }
+        return dailyQuestion;
     }
 
 

@@ -10,10 +10,14 @@ import com.xoj.xojbackendcompetitionservice.service.CompetitionQuestionService;
 import com.xoj.xojbackendcompetitionservice.service.CompetitionService;
 import com.yupi.yuojbackendcommon.common.ErrorCode;
 import com.yupi.yuojbackendcommon.constant.CommonConstant;
+import com.yupi.yuojbackendcommon.constant.UserConstant;
+import com.yupi.yuojbackendcommon.exception.BusinessException;
 import com.yupi.yuojbackendcommon.exception.ThrowUtils;
+import com.yupi.yuojbackendcommon.utils.GatewayHeaderUtil;
 import com.yupi.yuojbackendcommon.utils.SqlUtils;
 import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionQueryRequest;
 import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionSubmitInnerQueryRequest;
+import com.yupi.yuojbackendmodel.model.dto.competition.CompetitionSwitchUpdateRequest;
 import com.yupi.yuojbackendmodel.model.entity.Competition;
 import com.yupi.yuojbackendmodel.model.entity.CompetitionQuestion;
 import com.yupi.yuojbackendmodel.model.entity.QuestionSubmit;
@@ -26,6 +30,7 @@ import com.yupi.yuojbackendmodel.model.vo.CompetitionDetailVO;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionRankItemVO;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionRankQuestionInfoVO;
 import com.yupi.yuojbackendmodel.model.vo.CompetitionRankQuestionVO;
+import com.yupi.yuojbackendmodel.model.vo.CompetitionWeekStatsVO;
 import com.yupi.yuojbackendmodel.model.vo.QuestionSimpleVO;
 import com.yupi.yuojbackendmodel.model.vo.UserVO;
 import com.yupi.yuojbackendserviceclient.service.QuestionFeignClient;
@@ -37,6 +42,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -109,6 +118,27 @@ public class CompetitionServiceImpl extends ServiceImpl<CompetitionMapper, Compe
         // 先删旧关系再写新关系，保证与最新题目列表一致
         competitionQuestionService.removeByCompetitionId(competition.getId());
         competitionQuestionService.saveRelations(competition.getId(), questionIds);
+        return true;
+    }
+
+    @Override
+    public Boolean updateCompetitionSwitch(CompetitionSwitchUpdateRequest updateRequest) {
+        Long id = updateRequest.getId();
+        Competition competition = this.getById(id);
+        ThrowUtils.throwIf(competition == null, ErrorCode.NOT_FOUND_ERROR, "竞赛不存在");
+        // 仅管理员或竞赛创建者可修改
+        Long userId = GatewayHeaderUtil.getUserId();
+        if (!UserConstant.ADMIN_ROLE.equals(GatewayHeaderUtil.getUserRole())
+                && (userId == null || !userId.equals(competition.getUserId()))) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
+        }
+        // 只更新开关字段（updateById 忽略 null 字段）
+        Competition updateCompetition = new Competition();
+        updateCompetition.setId(id);
+        updateCompetition.setAllowSubmitAfterEnd(updateRequest.getAllowSubmitAfterEnd());
+        updateCompetition.setIsRevealed(updateRequest.getIsRevealed());
+        boolean update = this.updateById(updateCompetition);
+        ThrowUtils.throwIf(!update, ErrorCode.OPERATION_ERROR);
         return true;
     }
 
@@ -243,12 +273,20 @@ public class CompetitionServiceImpl extends ServiceImpl<CompetitionMapper, Compe
     }
 
     @Override
-    public List<CompetitionRankItemVO> getRankList(Long competitionId) {
+    public List<CompetitionRankItemVO> getRankList(Long competitionId, boolean realTime) {
         Competition competition = this.getById(competitionId);
         ThrowUtils.throwIf(competition == null, ErrorCode.NOT_FOUND_ERROR, "竞赛不存在");
         // 竞赛开始时间（通过秒数 = 首次通过提交时间 - 开始时间）
         Date startTime = StringUtils.isNotBlank(competition.getStartTime())
                 ? DateUtil.parse(competition.getStartTime()) : null;
+        // 封榜时间：未揭榜时封榜后的提交不计入排名，单独统计为冻结提交数
+        Date freezeTime = StringUtils.isNotBlank(competition.getFreezeTime())
+                ? DateUtil.parse(competition.getFreezeTime()) : null;
+        // 结束时间：结束后的提交单独统计为赛后提交，不参与排名
+        Date endTime = StringUtils.isNotBlank(competition.getEndTime())
+                ? DateUtil.parse(competition.getEndTime()) : null;
+        // 是否揭榜：揭榜后封榜期间的提交并入排名统计
+        boolean revealed = Integer.valueOf(1).equals(competition.getIsRevealed());
         List<CompetitionQuestion> relationList = competitionQuestionService.listByCompetitionId(competitionId);
         if (CollectionUtils.isEmpty(relationList)) {
             return Collections.emptyList();
@@ -282,16 +320,32 @@ public class CompetitionServiceImpl extends ServiceImpl<CompetitionMapper, Compe
             Map<Long, CompetitionRankQuestionVO> questionMap = new LinkedHashMap<>();
             for (CompetitionQuestion relation : relationList) {
                 CompetitionRankQuestionVO questionVO = new CompetitionRankQuestionVO();
-                List<QuestionSubmit> submits = questionSubmitMap.get(relation.getQuestionId());
-                int submitCount = submits == null ? 0 : submits.size();
+                List<QuestionSubmit> submits = questionSubmitMap.getOrDefault(
+                        relation.getQuestionId(), Collections.emptyList());
+                // 实时榜单：全部提交参与统计；正式榜单：只统计比赛期间的提交，未揭榜时封榜后的提交冻结不计入排名
+                List<QuestionSubmit> rankedSubmits = new ArrayList<>();
+                int frozenSubmitCount = 0;
+                for (QuestionSubmit submit : submits) {
+                    Date createTime = submit.getCreateTime();
+                    if (realTime) {
+                        // 实时榜单：所有提交都计入排名，不冻结
+                        rankedSubmits.add(submit);
+                    } else if (createTime != null && endTime != null && createTime.after(endTime)) {
+                        // 正式榜单：比赛结束后的提交不计入排名
+                        continue;
+                    } else if (!revealed && freezeTime != null && createTime != null && createTime.after(freezeTime)) {
+                        frozenSubmitCount++;
+                    } else {
+                        rankedSubmits.add(submit);
+                    }
+                }
+                int submitCount = rankedSubmits.size();
                 // 提交已按时间升序，第一条 Accepted 即首次通过
                 QuestionSubmit firstAccepted = null;
-                if (submits != null) {
-                    for (QuestionSubmit submit : submits) {
-                        if (JudgeInfoMessageEnum.ACCEPTED.getValue().equals(submit.getStatus())) {
-                            firstAccepted = submit;
-                            break;
-                        }
+                for (QuestionSubmit submit : rankedSubmits) {
+                    if (JudgeInfoMessageEnum.ACCEPTED.getValue().equals(submit.getStatus())) {
+                        firstAccepted = submit;
+                        break;
                     }
                 }
                 boolean accepted = firstAccepted != null;
@@ -304,17 +358,26 @@ public class CompetitionServiceImpl extends ServiceImpl<CompetitionMapper, Compe
                     }
                     questionVO.setFirstBlood(userId.equals(relation.getFirstAcceptedUserId()));
                     // 罚时：首次通过前的失败提交数 × 20 分钟 + 通过记录与竞赛开始的秒差（通过后的提交不罚）
-                    int failCountBeforeAccept = submits.indexOf(firstAccepted);
+                    int failCountBeforeAccept = rankedSubmits.indexOf(firstAccepted);
                     // 提交次数只计到首次通过为止（通过后的提交不计入）
                     submitCount = failCountBeforeAccept + 1;
                     questionVO.setSubmitCount(submitCount);
+                    if (firstAccepted.getCreateTime() != null && endTime != null
+                            && firstAccepted.getCreateTime().after(endTime)) {
+                        long postContestAcceptSeconds = (firstAccepted.getCreateTime().getTime() - startTime.getTime()) / 1000;
+                        questionVO.setPostContestAcceptSeconds(postContestAcceptSeconds);
+                        questionVO.setPostContestAccepted(true);
+                    }
                     penaltyTime += (long) failCountBeforeAccept * PENALTY_SECONDS_PER_FAIL + acceptTimeSeconds;
                 } else {
                     questionVO.setFirstBlood(false);
                     // 未通过：全部提交都算罚时
                     penaltyTime += (long) submitCount * PENALTY_SECONDS_PER_FAIL;
+                    questionVO.setSubmitCount(submitCount);
                 }
                 questionVO.setAcceptTimeSeconds(acceptTimeSeconds);
+                // 封榜后的提交数（未揭榜时冻结，不参与排名统计）
+                questionVO.setFrozenSubmitCount(frozenSubmitCount);
                 questionMap.put(relation.getQuestionId(), questionVO);
             }
             itemVO.setQuestions(questionMap);
@@ -342,9 +405,40 @@ public class CompetitionServiceImpl extends ServiceImpl<CompetitionMapper, Compe
     }
 
     @Override
-    public Page<CompetitionRankItemVO> getRankPage(Long competitionId, long current, long pageSize) {
+    public CompetitionWeekStatsVO getWeekStats() {
+        // 本周一 00:00:00 ~ 下周一 00:00:00（不含）
+        LocalDateTime weekStart = LocalDate.now().with(DayOfWeek.MONDAY).atStartOfDay();
+        LocalDateTime weekEnd = weekStart.plusWeeks(1);
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        String startTime = weekStart.format(formatter);
+        String endTime = weekEnd.format(formatter);
+        // startTime 落在本周内的竞赛（字符串按字典序比较时间先后）
+        QueryWrapper<Competition> queryWrapper = new QueryWrapper<>();
+        queryWrapper.ge("startTime", startTime);
+        queryWrapper.lt("startTime", endTime);
+        queryWrapper.eq("isDelete", false);
+        List<Competition> competitionList = this.list(queryWrapper);
+        // 按状态统计
+        int pendingCount = 0;
+        int ongoingCount = 0;
+        for (Competition competition : competitionList) {
+            if (CompetitionStatusEnum.PENDING.getCode().equals(competition.getStatus())) {
+                pendingCount++;
+            } else if (CompetitionStatusEnum.ONGOING.getCode().equals(competition.getStatus())) {
+                ongoingCount++;
+            }
+        }
+        CompetitionWeekStatsVO statsVO = new CompetitionWeekStatsVO();
+        statsVO.setAllCount(competitionList.size());
+        statsVO.setPendingCount(pendingCount);
+        statsVO.setOngoingCount(ongoingCount);
+        return statsVO;
+    }
+
+    @Override
+    public Page<CompetitionRankItemVO> getRankPage(Long competitionId, long current, long pageSize, boolean realTime) {
         // 排名需全量统计并排序后才能确定名次，排序完成后按页截取
-        List<CompetitionRankItemVO> rankList = getRankList(competitionId);
+        List<CompetitionRankItemVO> rankList = getRankList(competitionId, realTime);
         Page<CompetitionRankItemVO> page = new Page<>(Math.max(current, 1), Math.max(pageSize, 1));
         page.setTotal(rankList.size());
         int fromIndex = (int) Math.min((page.getCurrent() - 1) * page.getSize(), rankList.size());

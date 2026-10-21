@@ -26,7 +26,7 @@ public class CompetitionSubmitQueryRequest extends PageRequest implements Serial
     /**
      * 编程语言
      */
-    private String language;
+    private Integer languageId;
 
     /**
      * 测评状态

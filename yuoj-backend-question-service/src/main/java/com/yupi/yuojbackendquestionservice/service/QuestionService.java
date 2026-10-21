@@ -76,5 +76,11 @@ public interface QuestionService extends IService<Question> {
      * @return
      */
     boolean updateQuestionAcceptNum(long questionId);
-    
+
+    /**
+     * 获取每日一题（以当天日期为随机种子，同一天内题目固定，次日自动更换）
+     *
+     * @return 当日随机题目
+     */
+    Question getDailyQuestion();
 }

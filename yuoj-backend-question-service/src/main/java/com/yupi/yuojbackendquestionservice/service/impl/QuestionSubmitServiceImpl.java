@@ -1,15 +1,18 @@
 package com.yupi.yuojbackendquestionservice.service.impl;
 
+import cn.hutool.core.date.DateUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.yupi.yuojbackendcommon.common.ErrorCode;
 import com.yupi.yuojbackendcommon.constant.CommonConstant;
 import com.yupi.yuojbackendcommon.exception.BusinessException;
+import com.yupi.yuojbackendcommon.exception.ThrowUtils;
 import com.yupi.yuojbackendcommon.utils.GatewayHeaderUtil;
 import com.yupi.yuojbackendcommon.utils.SqlUtils;
 import com.yupi.yuojbackendmodel.model.dto.questionsubmit.QuestionSubmitAddRequest;
 import com.yupi.yuojbackendmodel.model.dto.questionsubmit.QuestionSubmitQueryRequest;
+import com.yupi.yuojbackendmodel.model.entity.Competition;
 import com.yupi.yuojbackendmodel.model.entity.Question;
 import com.yupi.yuojbackendmodel.model.entity.QuestionSubmit;
 import com.yupi.yuojbackendmodel.model.entity.User;
@@ -17,6 +20,8 @@ import com.yupi.yuojbackendmodel.model.enums.JudgeInfoMessageEnum;
 import com.yupi.yuojbackendmodel.model.enums.QuestionStatusEnum;
 import com.yupi.yuojbackendmodel.model.enums.QuestionSubmitLanguageEnum;
 import com.yupi.yuojbackendmodel.model.enums.UserRoleEnum;
+import com.yupi.yuojbackendmodel.model.vo.DailyQuestionRankItemVO;
+import com.yupi.yuojbackendmodel.model.vo.DailySubmitStatsVO;
 import com.yupi.yuojbackendmodel.model.vo.MySubmitStatsVO;
 import com.yupi.yuojbackendmodel.model.vo.QuestionSubmitCountVo;
 import com.yupi.yuojbackendmodel.model.vo.QuestionSubmitVO;
@@ -38,13 +43,17 @@ import javax.annotation.Resource;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -81,6 +90,7 @@ public class QuestionSubmitServiceImpl extends ServiceImpl<QuestionSubmitMapper,
      */
     @Override
     public long doQuestionSubmit(QuestionSubmitAddRequest questionSubmitAddRequest, Long userId) {
+        String now = DateUtil.now();
         // 校验编程语言是否合法
         Integer languageId = questionSubmitAddRequest.getLanguageId();
         QuestionSubmitLanguageEnum languageEnum = QuestionSubmitLanguageEnum.getEnumByValue(languageId);
@@ -96,6 +106,17 @@ public class QuestionSubmitServiceImpl extends ServiceImpl<QuestionSubmitMapper,
         // 未登录不能提交
         if (userId == null || userId <= 0) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
+        }
+        // 竞赛提交：比赛结束后仅当竞赛允许赛后提交（allowSubmitAfterEnd = 1）时才能提交
+        Long competitionId = questionSubmitAddRequest.getCompetitionId();
+        if (competitionId != null) {
+            Competition competition = competitionFeignClient.getCompetitionById(competitionId);
+            ThrowUtils.throwIf(competition == null, ErrorCode.NOT_FOUND_ERROR, "竞赛不存在");
+            String endTime = competition.getEndTime();
+            if (StringUtils.isNotBlank(endTime) && endTime.compareTo(now) <= 0
+                    && !Integer.valueOf(1).equals(competition.getAllowSubmitAfterEnd())) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "竞赛已结束，不允许提交");
+            }
         }
         // 每个用户串行提交题目
         QuestionSubmit questionSubmit = new QuestionSubmit();
@@ -114,7 +135,6 @@ public class QuestionSubmitServiceImpl extends ServiceImpl<QuestionSubmitMapper,
         // 题目提交数 +1
         questionService.updateQuestionSubmitNum(questionId);
         // 竞赛提交：竞赛题目提交数 +1
-        Long competitionId = questionSubmitAddRequest.getCompetitionId();
         if (competitionId != null) {
             competitionFeignClient.updateCompetitionQuestionSubmitNum(competitionId, questionId);
         }
@@ -410,6 +430,94 @@ public class QuestionSubmitServiceImpl extends ServiceImpl<QuestionSubmitMapper,
         mySubmitStatsVO.setContinuousSubmitDays(continuousSubmitDays);
         mySubmitStatsVO.setMonthAcceptedCount(monthAcceptedCount);
         return mySubmitStatsVO;
+    }
+
+    @Override
+    public List<DailySubmitStatsVO> getRecentDailySubmitStats(long userId, int days) {
+        LocalDate today = LocalDate.now();
+        LocalDate startDate = today.minusDays(days - 1);
+        // 查询最近 N 天的提交时间和判题状态
+        QueryWrapper<QuestionSubmit> queryWrapper = new QueryWrapper<>();
+        queryWrapper.select("createTime", "status");
+        queryWrapper.eq("userId", userId);
+        queryWrapper.eq("isDelete", false);
+        queryWrapper.ge("createTime", startDate.atStartOfDay());
+        List<QuestionSubmit> submitList = this.list(queryWrapper);
+        // 按天聚合提交次数与 AC 次数
+        Map<LocalDate, Long> submitCountMap = new HashMap<>();
+        Map<LocalDate, Long> acceptedCountMap = new HashMap<>();
+        for (QuestionSubmit submit : submitList) {
+            if (submit.getCreateTime() == null) {
+                continue;
+            }
+            LocalDate date = submit.getCreateTime().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+            submitCountMap.merge(date, 1L, Long::sum);
+            if (JudgeInfoMessageEnum.ACCEPTED.getValue().equals(submit.getStatus())) {
+                acceptedCountMap.merge(date, 1L, Long::sum);
+            }
+        }
+        // 按日期升序补齐每一天，无提交的日期补 0
+        List<DailySubmitStatsVO> statsVOList = new ArrayList<>();
+        for (int i = 0; i < days; i++) {
+            LocalDate date = startDate.plusDays(i);
+            DailySubmitStatsVO dailySubmitStatsVO = new DailySubmitStatsVO();
+            dailySubmitStatsVO.setDate(date.toString());
+            dailySubmitStatsVO.setSubmitCount(submitCountMap.getOrDefault(date, 0L));
+            dailySubmitStatsVO.setAcceptedCount(acceptedCountMap.getOrDefault(date, 0L));
+            statsVOList.add(dailySubmitStatsVO);
+        }
+        return statsVOList;
+    }
+
+    @Override
+    public List<DailyQuestionRankItemVO> getDailyQuestionRank(int limit) {
+        // 当天每日一题
+        Question dailyQuestion = questionService.getDailyQuestion();
+        if (dailyQuestion == null) {
+            return Collections.emptyList();
+        }
+        // 查询当天在该题上的题库 AC 提交（排除竞赛提交，按通过时间升序）
+        LocalDateTime todayStart = LocalDate.now().atStartOfDay();
+        QueryWrapper<QuestionSubmit> queryWrapper = new QueryWrapper<>();
+        queryWrapper.select("userId", "createTime");
+        queryWrapper.eq("questionId", dailyQuestion.getId());
+        queryWrapper.isNull("competitionId");
+        queryWrapper.eq("status", JudgeInfoMessageEnum.ACCEPTED.getValue());
+        queryWrapper.eq("isDelete", false);
+        queryWrapper.ge("createTime", todayStart);
+        queryWrapper.lt("createTime", todayStart.plusDays(1));
+        queryWrapper.orderByAsc("createTime");
+        List<QuestionSubmit> submitList = this.list(queryWrapper);
+        if (CollectionUtils.isEmpty(submitList)) {
+            return Collections.emptyList();
+        }
+        // 同一用户保留最早通过的一次，按通过时间升序取前 limit 名
+        Map<Long, Date> firstAcceptedTimeMap = new LinkedHashMap<>();
+        for (QuestionSubmit submit : submitList) {
+            if (submit.getUserId() == null || submit.getCreateTime() == null) {
+                continue;
+            }
+            firstAcceptedTimeMap.putIfAbsent(submit.getUserId(), submit.getCreateTime());
+        }
+        List<Long> userIds = firstAcceptedTimeMap.keySet().stream().limit(limit).collect(Collectors.toList());
+        if (CollectionUtils.isEmpty(userIds)) {
+            return Collections.emptyList();
+        }
+        // 批量查询用户信息，避免 N+1
+        Map<Long, User> userMap = userFeignClient.listByIds(userIds).stream()
+                .collect(Collectors.toMap(User::getId, Function.identity(), (a, b) -> a));
+        // 组装榜单（1 为最早通过）
+        List<DailyQuestionRankItemVO> rankList = new ArrayList<>();
+        int rank = 1;
+        for (Long userId : userIds) {
+            DailyQuestionRankItemVO itemVO = new DailyQuestionRankItemVO();
+            itemVO.setRank(rank++);
+            itemVO.setUserId(userId);
+            itemVO.setUserVO(userFeignClient.getUserVO(userMap.get(userId)));
+            itemVO.setAcceptedTime(firstAcceptedTimeMap.get(userId));
+            rankList.add(itemVO);
+        }
+        return rankList;
     }
 
 

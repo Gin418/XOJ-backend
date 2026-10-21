@@ -288,6 +288,20 @@ public class UserController {
     }
 
     /**
+     * 根据昵称模糊查询用户列表（脱敏）
+     *
+     * @param userName 用户昵称
+     * @param limit    最大返回数量，默认 10，最大 20
+     * @return
+     */
+    @GetMapping("/get/userName/vo")
+    public BaseResponse<List<UserVO>> listUserVOByUserName(@RequestParam String userName,
+            @RequestParam(defaultValue = "10") int limit) {
+        ThrowUtils.throwIf(limit < 1 || limit > 20, ErrorCode.PARAMS_ERROR, "查询数量需在 1~20 之间");
+        return ResultUtils.success(userService.listUserVOByUserName(userName, limit));
+    }
+
+    /**
      * 分页获取用户列表（仅管理员）
      *
      * @param userQueryRequest

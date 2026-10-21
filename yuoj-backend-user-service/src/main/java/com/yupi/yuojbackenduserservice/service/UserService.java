@@ -150,6 +150,15 @@ public interface UserService extends IService<User> {
     List<UserVO> getUserVO(List<User> userList);
 
     /**
+     * 根据昵称模糊查询用户列表（脱敏）
+     *
+     * @param userName 用户昵称
+     * @param limit    最大返回数量
+     * @return
+     */
+    List<UserVO> listUserVOByUserName(String userName, int limit);
+
+    /**
      * 获取查询条件
      *
      * @param userQueryRequest

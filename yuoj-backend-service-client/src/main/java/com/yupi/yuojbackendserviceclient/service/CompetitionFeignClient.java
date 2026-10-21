@@ -1,5 +1,6 @@
 package com.yupi.yuojbackendserviceclient.service;
 
+import com.yupi.yuojbackendmodel.model.entity.Competition;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -9,6 +10,12 @@ import org.springframework.web.bind.annotation.RequestParam;
  */
 @FeignClient(name = "xoj-backend-competition-service", path = "/api/competition/inner")
 public interface CompetitionFeignClient {
+
+    /**
+     * 根据竞赛 id 查询竞赛信息
+     */
+    @PostMapping("/get")
+    Competition getCompetitionById(@RequestParam("competitionId") long competitionId);
 
     /**
      * 竞赛题目提交数 +1

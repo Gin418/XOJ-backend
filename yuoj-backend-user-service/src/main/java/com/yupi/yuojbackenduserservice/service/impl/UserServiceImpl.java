@@ -389,6 +389,20 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     }
 
     @Override
+    public List<UserVO> listUserVOByUserName(String userName, int limit) {
+        if (StringUtils.isBlank(userName)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户昵称不能为空");
+        }
+        List<User> userList = this.lambdaQuery()
+                .like(User::getUserName, userName)
+                .select(User::getId, User::getUserName, User::getUserAvatar, User::getUserProfile,
+                        User::getUserRole, User::getCreateTime)
+                .last("limit " + limit)
+                .list();
+        return getUserVO(userList);
+    }
+
+    @Override
     public QueryWrapper<User> getQueryWrapper(UserQueryRequest userQueryRequest) {
         if (userQueryRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数为空");

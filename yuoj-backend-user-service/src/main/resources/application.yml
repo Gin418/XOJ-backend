@@ -36,6 +36,12 @@ spring:
     nacos:
       discovery:
         server-addr: 127.0.0.1:8848
+  # RabbitMQ 配置（消息通知/私信 SSE 推送广播）
+  rabbitmq:
+    host: localhost
+    port: 5672
+    password: 123456
+    username: yuoj
 server:
   address: 0.0.0.0
   port: 8102

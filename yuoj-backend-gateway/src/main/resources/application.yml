@@ -4,6 +4,9 @@ spring:
       discovery:
         server-addr: 127.0.0.1:8848
     gateway:
+      httpclient:
+        # SSE 长连接需要更长的响应超时时间（默认 60 秒会断开推送）
+        response-timeout: 1h
       routes:
         - id: yuoj-backend-user-service
           uri: lb://yuoj-backend-user-service

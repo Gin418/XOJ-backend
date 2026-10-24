@@ -1,6 +1,7 @@
 HELP.md
 application-*.yml
 .gitignore
+.qoder-tmp/
 mvnw*
 download/
 upload/

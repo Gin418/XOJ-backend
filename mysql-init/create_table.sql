@@ -71,45 +71,49 @@ create table if not exists question_submit
     index idx_userId (userId)
 ) comment '题目提交（题库/竞赛共用）';
 
--- 帖子表
-create table if not exists post
+-- 讨论表
+create table if not exists discussion
 (
     id         bigint auto_increment comment 'id' primary key,
     title      varchar(512)                       null comment '标题',
     content    text                               null comment '内容',
-    tags       varchar(1024)                      null comment '标签列表（json 数组）',
+    questionId bigint                             null comment '题目 id',
+    parentId   bigint                             null comment '父评论 id（null 表示一级评论/主贴，回复指向父级）',
+    replyUserId bigint                            null comment '被回复用户 id（回复时冗余父评论作者，null 表示一级评论）',
     thumbNum   int      default 0                 not null comment '点赞数',
     favourNum  int      default 0                 not null comment '收藏数',
     userId     bigint                             not null comment '创建用户 id',
     createTime datetime default CURRENT_TIMESTAMP not null comment '创建时间',
     updateTime datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
     isDelete   tinyint  default 0                 not null comment '是否删除',
-    index idx_userId (userId)
-) comment '帖子' collate = utf8mb4_unicode_ci;
+    index idx_userId (userId),
+    index idx_questionId (questionId),
+    index idx_parentId (parentId)
+) comment '讨论' collate = utf8mb4_unicode_ci;
 
--- 帖子点赞表（硬删除）
-create table if not exists post_thumb
+-- 讨论点赞表（硬删除）
+create table if not exists discussion_thumb
 (
-    id         bigint auto_increment comment 'id' primary key,
-    postId     bigint                             not null comment '帖子 id',
-    userId     bigint                             not null comment '创建用户 id',
-    createTime datetime default CURRENT_TIMESTAMP not null comment '创建时间',
-    updateTime datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
-    index idx_postId (postId),
+    id           bigint auto_increment comment 'id' primary key,
+    discussionId bigint                             not null comment '讨论 id',
+    userId       bigint                             not null comment '创建用户 id',
+    createTime   datetime default CURRENT_TIMESTAMP not null comment '创建时间',
+    updateTime   datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
+    index idx_discussionId (discussionId),
     index idx_userId (userId)
-) comment '帖子点赞';
+) comment '讨论点赞';
 
--- 帖子收藏表（硬删除）
-create table if not exists post_favour
+-- 讨论收藏表（硬删除）
+create table if not exists discussion_favour
 (
-    id         bigint auto_increment comment 'id' primary key,
-    postId     bigint                             not null comment '帖子 id',
-    userId     bigint                             not null comment '创建用户 id',
-    createTime datetime default CURRENT_TIMESTAMP not null comment '创建时间',
-    updateTime datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
-    index idx_postId (postId),
+    id           bigint auto_increment comment 'id' primary key,
+    discussionId bigint                             not null comment '讨论 id',
+    userId       bigint                             not null comment '创建用户 id',
+    createTime   datetime default CURRENT_TIMESTAMP not null comment '创建时间',
+    updateTime   datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
+    index idx_discussionId (discussionId),
     index idx_userId (userId)
-) comment '帖子收藏';
+) comment '讨论收藏';
 
 -- 竞赛表
 create table if not exists competition
@@ -177,6 +181,77 @@ alter table competition
 -- 存量库升级：竞赛表新增是否允许赛后提交字段
 alter table competition
     add column allowSubmitAfterEnd tinyint default 0 not null comment '是否允许赛后提交（0 不允许、1 允许）' after freezeTime;
+
+-- 存量库升级：帖子表重命名为讨论表（须先执行，后续升级语句均作用于讨论表）
+rename table post to discussion;
+rename table post_thumb to discussion_thumb;
+rename table post_favour to discussion_favour;
+
+-- 存量库升级：讨论点赞表 postId 字段重命名为 discussionId
+alter table discussion_thumb
+    change column postId discussionId bigint not null comment '讨论 id';
+alter table discussion_thumb
+    drop index idx_postId,
+    add index idx_discussionId (discussionId);
+
+-- 存量库升级：讨论收藏表 postId 字段重命名为 discussionId
+alter table discussion_favour
+    change column postId discussionId bigint not null comment '讨论 id';
+alter table discussion_favour
+    drop index idx_postId,
+    add index idx_discussionId (discussionId);
+
+-- 存量库升级：讨论表新增题目 id 字段及索引
+alter table discussion
+    add column questionId bigint null comment '题目 id' after content;
+alter table discussion
+    add index idx_questionId (questionId);
+
+-- 存量库升级：讨论表新增父评论 id 字段及索引（回复功能，两级楼中楼）
+alter table discussion
+    add column parentId bigint null comment '父评论 id（null 表示一级评论/主贴，回复指向父级）' after questionId;
+alter table discussion
+    add index idx_parentId (parentId);
+
+-- 存量库升级：讨论表新增被回复用户 id 字段（回复展示“回复 @xxx”用）
+alter table discussion
+    add column replyUserId bigint null comment '被回复用户 id（回复时冗余父评论作者，null 表示一级评论）' after parentId;
+
+-- 存量库升级：讨论表删除标签字段
+alter table discussion
+    drop column tags;
+
+-- 消息表（系统通知 / 私信）
+create table if not exists message
+(
+    id         bigint auto_increment comment 'id' primary key,
+    type       tinyint   default 0                 not null comment '消息类型：0 系统通知、1 私信',
+    title      varchar(256)                        null comment '标题（系统通知使用）',
+    content    text                                not null comment '内容',
+    senderId   bigint                              null comment '发送用户 id（私信使用，通知为 null）',
+    receiverId bigint                              null comment '接收用户 id（广播通知为 null，不落库）',
+    isRead     tinyint   default 0                 not null comment '是否已读：0 未读、1 已读',
+    createTime datetime  default CURRENT_TIMESTAMP not null comment '创建时间',
+    updateTime datetime  default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
+    isDelete   tinyint   default 0                 not null comment '是否删除',
+    index idx_receiverId (receiverId),
+    index idx_senderId (senderId),
+    index idx_type (type)
+) comment '消息（系统通知/私信）' collate = utf8mb4_unicode_ci;
+
+-- 私信会话表（每个用户与一位好友一条会话记录，发送私信或打开会话时创建/更新）
+create table if not exists conversation
+(
+    id            bigint                             not null comment 'id' primary key,
+    userId        bigint                             not null comment '会话所属用户 id',
+    friendId      bigint                             not null comment '对方用户 id',
+    lastMessageId bigint                             null comment '最后一条消息 id（冗余，发送私信时更新）',
+    createTime    datetime default CURRENT_TIMESTAMP not null comment '创建时间',
+    updateTime    datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
+    isDelete      tinyint  default 0                 not null comment '是否删除',
+    unique index uk_user_friend (userId, friendId),
+    index idx_userId (userId)
+) comment '私信会话' collate = utf8mb4_unicode_ci;
 
 -- 存量库升级：竞赛表新增是否揭榜字段
 alter table competition

@@ -57,11 +57,11 @@ public class GlobalAuthFilter implements GlobalFilter, Ordered {
             "/api/question/stats/**",
             "/api/question/language/select",
             "/api/question/file/upload",
-            // 帖子服务：公开查询接口
-            "/api/question/post/get/vo",
-            "/api/question/post/list/page/vo",
-            "/api/question/post/search/page/vo",
-            "/api/question/post_favour/list/page",
+            // 讨论服务：公开查询接口
+            "/api/question/discussion/get/vo",
+            "/api/question/discussion/list/page/vo",
+            "/api/question/discussion/search/page/vo",
+            "/api/question/discussion_favour/list/page",
             // 竞赛服务：本周统计（公开）
             "/api/competition/week/stats",
             // 竞赛服务
@@ -82,6 +82,10 @@ public class GlobalAuthFilter implements GlobalFilter, Ordered {
         String path = serverHttpRequest.getURI().getPath();
         Map<String, String> headers = Tools.getHeaderMap(serverHttpRequest.getHeaders());
         String token = headers.get(GatewayConsts.HEADER_TOKEN);
+        // EventSource 无法自定义请求头，SSE 连接支持从 URL query 参数携带 token
+        if (StringUtils.isBlank(token)) {
+            token = serverHttpRequest.getQueryParams().getFirst("token");
+        }
         String traceId = StringUtils.defaultIfBlank(headers.get(GatewayConsts.HEADER_TRACE_ID), Tools.generateUuid());
         // 判断路径中是否包含 inner，只允许内部调用
         if (antPathMatcher.match("/**/inner/**", path)) {

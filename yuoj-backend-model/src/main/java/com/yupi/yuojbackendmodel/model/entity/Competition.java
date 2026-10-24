@@ -9,7 +9,7 @@ import java.util.List;
 @Data
 public class Competition {
 
-    @TableId(type = IdType.AUTO)
+    @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
     private String competitionTitle;

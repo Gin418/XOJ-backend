@@ -1,53 +1,67 @@
 version: '3'
 services:
-  yuoj-backend-gateway:
-    container_name: yuoj-backend-gateway
+  xoj-gateway:
+    container_name: xoj-gateway
     build:
-      context: ./yuoj-backend-gateway
+      context: xoj-gateway
       dockerfile: Dockerfile
     ports:
       - "8101:8101"
     networks:
       - mynetwork
 
-  yuoj-backend-user-service:
-    container_name: yuoj-backend-user-service
+  xoj-user-service:
+    container_name: xoj-user-service
     build:
-      context: ./yuoj-backend-user-service
+      context: ./xoj-user-service
       dockerfile: Dockerfile
     ports:
       - "8102:8102"
     networks:
       - mynetwork
     depends_on:
-      - yuoj-backend-gateway
+      - xoj-gateway
 
-  yuoj-backend-question-service:
-    container_name: yuoj-backend-question-service
+  xoj-question-service:
+    container_name: xoj-question-service
     build:
-      context: ./yuoj-backend-question-service
+      context: xoj-question-service
       dockerfile: Dockerfile
     ports:
       - "8103:8103"
     networks:
       - mynetwork
     depends_on:
-      - yuoj-backend-user-service
-      - yuoj-backend-gateway
+      - xoj-user-service
+      - xoj-gateway
 
-  yuoj-backend-judge-service:
-    container_name: yuoj-backend-judge-service
+  xoj-judge-service:
+    container_name: xoj-judge-service
     build:
-      context: ./yuoj-backend-judge-service
+      context: xoj-judge-service
       dockerfile: Dockerfile
     ports:
       - "8104:8104"
     networks:
       - mynetwork
     depends_on:
-      - yuoj-backend-user-service
-      - yuoj-backend-question-service
-      - yuoj-backend-gateway
+      - xoj-user-service
+      - xoj-question-service
+      - xoj-gateway
+
+  xoj-competition-service:
+    container_name: xoj-competition-service
+    build:
+      context: xoj-competition-service
+      dockerfile: Dockerfile
+    ports:
+      - "8105:8105"
+    networks:
+      - mynetwork
+    depends_on:
+      - xoj-user-service
+      - xoj-question-service
+      - xoj-gateway
 
 # 网络，不定义的话就是默认网络
 networks:

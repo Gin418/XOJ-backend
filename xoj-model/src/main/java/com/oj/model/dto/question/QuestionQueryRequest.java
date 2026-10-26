@@ -1,0 +1,63 @@
+package com.oj.model.dto.question;
+
+import com.oj.common.common.PageRequest;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+
+import java.io.Serializable;
+import java.util.List;
+
+/**
+ * 查询请求
+ */
+@EqualsAndHashCode(callSuper = true)
+@Data
+public class QuestionQueryRequest extends PageRequest implements Serializable {
+
+    /**
+     * id
+     */
+    private Long id;
+
+    /**
+     * 标题
+     */
+    private String title;
+
+    /**
+     * 内容
+     */
+    private String content;
+
+    /**
+     * 关键字
+     */
+    private String keyword;
+
+    /**
+     * 题号
+     */
+    private String customId;
+
+    /**
+     * 当前用户做题状态（QuestionStatusEnum：0-未提交 1-提交未通过 2-通过）
+     */
+    private Integer questionStatus;
+
+    /**
+     * 标签列表
+     */
+    private List<String> tags;
+
+    /**
+     * 题目说明
+     */
+    private String description;
+
+    /**
+     * 创建用户 id
+     */
+    private Long userId;
+
+    private static final long serialVersionUID = 1L;
+}

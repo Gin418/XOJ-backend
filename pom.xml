@@ -2,21 +2,21 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <groupId>com.yupi</groupId>
-    <artifactId>yuoj-backend-microservice</artifactId>
+    <groupId>com.oj</groupId>
+    <artifactId>xoj-microservice</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <packaging>pom</packaging>
-    <name>yuoj-backend-microservice</name>
+    <name>xoj-microservice</name>
     <description>X OJ 项目</description>
     <modules>
-        <module>yuoj-backend-common</module>
-        <module>yuoj-backend-model</module>
-        <module>yuoj-backend-gateway</module>
-        <module>yuoj-backend-service-client</module>
-        <module>yuoj-backend-question-service</module>
-        <module>yuoj-backend-user-service</module>
-        <module>yuoj-backend-judge-service</module>
-        <module>xoj-backend-competition-service</module>
+        <module>xoj-common</module>
+        <module>xoj-model</module>
+        <module>xoj-gateway</module>
+        <module>xoj-service-client</module>
+        <module>xoj-question-service</module>
+        <module>xoj-user-service</module>
+        <module>xoj-judge-service</module>
+        <module>xoj-competition-service</module>
     </modules>
     <properties>
         <java.version>1.8</java.version>
@@ -29,13 +29,6 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-dependencies</artifactId>
-            <version>2021.0.5</version>
-            <type>pom</type>
-            <scope>import</scope>
         </dependency>
         <dependency>
             <groupId>org.springframework.cloud</groupId>

@@ -1,0 +1,28 @@
+package com.oj.judgeservice.judge.codesandbox.impl;
+
+import com.oj.judgeservice.judge.codesandbox.CodeSandbox;
+import com.oj.model.codesandbox.ExecuteCodeRequest;
+import com.oj.model.codesandbox.ExecuteCodeResponse;
+import com.oj.model.codesandbox.JudgeInfo;
+import lombok.extern.slf4j.Slf4j;
+
+import java.util.List;
+
+/**
+ * 示例代码沙箱（仅为了跑通业务流程）
+ */
+@Slf4j
+public class ExampleCodeSandbox implements CodeSandbox {
+    @Override
+    public ExecuteCodeResponse executeCode(ExecuteCodeRequest executeCodeRequest) {
+        List<String> inputList = executeCodeRequest.getInputList();
+        ExecuteCodeResponse executeCodeResponse = new ExecuteCodeResponse();
+        executeCodeResponse.setOutputList(inputList);
+        executeCodeResponse.setMessage("测试执行成功");
+        JudgeInfo judgeInfo = new JudgeInfo();
+        judgeInfo.setMemory(100L);
+        judgeInfo.setTime(100L);
+        executeCodeResponse.setJudgeInfo(judgeInfo);
+        return executeCodeResponse;
+    }
+}

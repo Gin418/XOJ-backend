@@ -1,11 +1,11 @@
-package com.yupi.yuojbackenduserservice.controller;
+package com.oj.userservice.controller;
 
-import com.yupi.yuojbackendcommon.common.ErrorCode;
-import com.yupi.yuojbackendcommon.exception.ThrowUtils;
-import com.yupi.yuojbackendcommon.utils.LoginUserUtil;
-import com.yupi.yuojbackendmodel.model.entity.User;
-import com.yupi.yuojbackenduserservice.service.UserService;
-import com.yupi.yuojbackenduserservice.sse.SseEmitterManager;
+import com.oj.common.common.ErrorCode;
+import com.oj.common.exception.ThrowUtils;
+import com.oj.common.utils.LoginUserUtil;
+import com.oj.model.entity.User;
+import com.oj.userservice.service.UserService;
+import com.oj.userservice.sse.SseEmitterManager;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.MediaType;

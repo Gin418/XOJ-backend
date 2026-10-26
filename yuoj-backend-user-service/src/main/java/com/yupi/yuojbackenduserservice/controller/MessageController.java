@@ -78,7 +78,7 @@ public class MessageController {
         ThrowUtils.throwIf(StringUtils.isAnyBlank(notificationSendRequest.getTitle(), notificationSendRequest.getContent()),
                 ErrorCode.PARAMS_ERROR, "标题和内容不能为空");
         messageService.sendNotification(notificationSendRequest.getTitle(),
-                notificationSendRequest.getContent(), notificationSendRequest.getReceiverId());
+                notificationSendRequest.getContent(), notificationSendRequest.getReceiverIds());
         return ResultUtils.success(true);
     }
 

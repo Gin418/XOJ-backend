@@ -27,6 +27,7 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -82,21 +83,35 @@ public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message> impl
         BeanUtils.copyProperties(message, messageVO);
         messageVO.setSenderName(sender.getUserName());
         messageVO.setSenderAvatar(sender.getUserAvatar());
-        messageMqProducer.publish(messageVO);
+        messageMqProducer.publish(Collections.singletonList(messageVO));
         return messageVO;
     }
 
     @Override
-    public void sendNotification(String title, String content, Long receiverId) {
+    public void sendNotification(String title, String content, List<Long> receiverIds) {
         ThrowUtils.throwIf(StringUtils.isAnyBlank(title, content), ErrorCode.PARAMS_ERROR, "标题和内容不能为空");
-        MessageVO messageVO = new MessageVO();
-        messageVO.setType(MessageTypeEnum.NOTIFICATION.getValue());
-        messageVO.setTitle(title);
-        messageVO.setContent(content);
-        messageVO.setIsRead(Message.UNREAD);
-        messageVO.setReceiverId(receiverId);
-        // receiverId 为空表示广播通知：只推送给在线用户，不落库
-        if (receiverId != null) {
+        // receiverIds 为空表示广播通知：只推送给在线用户，不落库
+        if (CollectionUtils.isEmpty(receiverIds)) {
+            MessageVO messageVO = new MessageVO();
+            messageVO.setType(MessageTypeEnum.NOTIFICATION.getValue());
+            messageVO.setTitle(title);
+            messageVO.setContent(content);
+            messageVO.setIsRead(Message.UNREAD);
+            messageMqProducer.publish(Collections.singletonList(messageVO));
+            return;
+        }
+        // 去重并过滤无效 id，批量校验接收用户存在
+        List<Long> distinctReceiverIds = receiverIds.stream()
+                .filter(Objects::nonNull)
+                .filter(id -> id > 0)
+                .distinct()
+                .collect(Collectors.toList());
+        ThrowUtils.throwIf(distinctReceiverIds.isEmpty(), ErrorCode.PARAMS_ERROR, "接收用户不能为空");
+        List<User> receivers = userMapper.selectBatchIds(distinctReceiverIds);
+        ThrowUtils.throwIf(receivers.size() != distinctReceiverIds.size(), ErrorCode.NOT_FOUND_ERROR, "存在无效的接收用户");
+        // 每个接收用户落库一条通知，最后只发一条 MQ 消息
+        List<MessageVO> messageVOList = new ArrayList<>();
+        for (Long receiverId : distinctReceiverIds) {
             Message message = new Message();
             message.setType(MessageTypeEnum.NOTIFICATION.getValue());
             message.setTitle(title);
@@ -105,10 +120,11 @@ public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message> impl
             message.setIsRead(Message.UNREAD);
             boolean saved = this.save(message);
             ThrowUtils.throwIf(!saved, ErrorCode.SYSTEM_ERROR, "通知发送失败");
-            messageVO.setId(message.getId());
-            messageVO.setCreateTime(message.getCreateTime());
+            MessageVO messageVO = new MessageVO();
+            BeanUtils.copyProperties(message, messageVO);
+            messageVOList.add(messageVO);
         }
-        messageMqProducer.publish(messageVO);
+        messageMqProducer.publish(messageVOList);
     }
 
     @Override

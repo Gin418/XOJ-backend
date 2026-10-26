@@ -8,6 +8,8 @@ import com.yupi.yuojbackendmodel.model.vo.ConversationVO;
 import com.yupi.yuojbackendmodel.model.vo.MessageUnreadVO;
 import com.yupi.yuojbackendmodel.model.vo.MessageVO;
 
+import java.util.List;
+
 /**
  * 消息服务（系统通知 / 私信）
  *
@@ -28,11 +30,11 @@ public interface MessageService extends IService<Message> {
     /**
      * 发送系统通知
      *
-     * @param title      标题
-     * @param content    内容
-     * @param receiverId 接收用户 id（为空则仅广播给所有在线用户，不落库）
+     * @param title       标题
+     * @param content     内容
+     * @param receiverIds 接收用户 id 列表（为空则仅广播给所有在线用户，不落库）
      */
-    void sendNotification(String title, String content, Long receiverId);
+    void sendNotification(String title, String content, List<Long> receiverIds);
 
     /**
      * 分页查询消息列表
